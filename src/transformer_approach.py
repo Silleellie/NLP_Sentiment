@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     t = TransformersApproach('bert-base-uncased')
 
-    dataset = t.dataset_builder('dataset/train.tsv')
+    dataset = t.dataset_builder('../dataset/train.tsv')
 
     dataset_tokenized = dataset.map(lambda single_item_dataset: t.tokenize_fn(single_item_dataset),
                                     batched=True)
