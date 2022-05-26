@@ -17,10 +17,10 @@ class TransformersApproach:
                                                                         ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
-    def dataset_builder(raw_dataset_path):
+    def dataset_builder(raw_dataset_path, cut=None):
         train = pd.read_csv(raw_dataset_path, sep="\t")
-        all_texts = list(train['Phrase'])[:10000]
-        all_labels = list(train['Sentiment'])[:10000]
+        all_texts = list(train['Phrase'])[:cut]
+        all_labels = list(train['Sentiment'])[:cut]
 
         train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7)
         train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     t = TransformersApproach('bert-base-uncased')
 
-    dataset = t.dataset_builder('../dataset/train.tsv')
+    dataset = t.dataset_builder('../dataset/train.tsv', cut=10000)
 
     dataset_tokenized = dataset.map(lambda single_item_dataset: t.tokenize_fn(single_item_dataset),
                                     batched=True)
@@ -81,3 +81,5 @@ if __name__ == '__main__':
     )
 
     trainer.train()
+
+    print(trainer.evaluate(dataset_formatted["test"]))
