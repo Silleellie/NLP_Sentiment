@@ -52,7 +52,7 @@ if __name__ == '__main__':
 
         return {'sklearn_accuracy': accuracy_score(labels, predictions)}
 
-    t = TransformersApproach('distilbert-base-uncased-finetuned-sst-2-english')
+    t = TransformersApproach('bert-base-uncased')
 
     dataset = t.dataset_builder('dataset/train.tsv')
 
@@ -68,8 +68,8 @@ if __name__ == '__main__':
                                       evaluation_strategy='epoch',
                                       num_train_epochs=10,
                                       optim='adamw_torch',
-                                      per_device_train_batch_size=64,
-                                      per_device_eval_batch_size=64)
+                                      per_device_train_batch_size=8,
+                                      per_device_eval_batch_size=8)
 
     trainer = Trainer(
         t.model,
