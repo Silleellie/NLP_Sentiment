@@ -1,13 +1,19 @@
 import datasets
 import numpy as np
 import pandas as pd
+import torch.cuda
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer
 from transformers import DataCollatorWithPadding
 from transformers import TrainingArguments
+from flair.data import Sentence
+from flair.models import SequenceTagger
+
+torch.cuda.empty_cache()
 
 device = 'cuda:0'
+
 
 class TransformersApproach:
 
@@ -15,6 +21,9 @@ class TransformersApproach:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=5,
                                                                         ignore_mismatched_sizes=True).to(device)
+
+        # load tagger
+        self.tagger = SequenceTagger.load("flair/pos-english-fast")
 
     @staticmethod
     def dataset_builder(raw_dataset_path, cut=None):
@@ -41,7 +50,19 @@ class TransformersApproach:
         return dataset_dict
 
     def tokenize_fn(self, batch_item_dataset):
-        return self.tokenizer(batch_item_dataset["Phrase"], truncation=True)
+        return self.tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"], truncation=True)
+
+    def pos_tagger_fn(self, batch_item_dataset):
+        # make example sentence
+        sentence = Sentence(batch_item_dataset["Phrase"])
+
+        # predict NER tags
+        self.tagger.predict(sentence)
+
+        # print sentence
+        tags = ' '.join(token.tag for token in sentence.tokens)
+
+        return {'Pos': tags}
 
 
 if __name__ == '__main__':
@@ -51,21 +72,24 @@ if __name__ == '__main__':
 
         return {'sklearn_accuracy': accuracy_score(labels, predictions)}
 
+
     t = TransformersApproach('bert-base-uncased')
 
     dataset = t.dataset_builder('../dataset/train.tsv', cut=10000)
 
-    dataset_tokenized = dataset.map(lambda single_item_dataset: t.tokenize_fn(single_item_dataset),
-                                    batched=True)
+    dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
+
+    dataset_tokenized = dataset_pos.map(lambda single_item_dataset: t.tokenize_fn(single_item_dataset),
+                                        batched=True)
 
     # this specific model expects label column
-    dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label').remove_columns('Phrase')
+    dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label').remove_columns(['Phrase', 'Pos'])
 
     data_collator = DataCollatorWithPadding(tokenizer=t.tokenizer)
 
     training_args = TrainingArguments("../output/test-trainer",
                                       evaluation_strategy='epoch',
-                                      num_train_epochs=10,
+                                      num_train_epochs=5,
                                       optim='adamw_torch',
                                       per_device_train_batch_size=8,
                                       per_device_eval_batch_size=8)
