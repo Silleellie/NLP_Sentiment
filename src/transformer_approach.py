@@ -1,13 +1,11 @@
 import datasets
 import numpy as np
 import pandas as pd
-import torch.optim
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, IntervalStrategy
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer
 from transformers import DataCollatorWithPadding
 from transformers import TrainingArguments
-from transformers.training_args import OptimizerNames
 
 device = 'cuda:0'
 
@@ -15,7 +13,8 @@ class TransformersApproach:
 
     def __init__(self, model_name: str):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=5, ignore_mismatched_sizes=True).to(device)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=5,
+                                                                        ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
     def dataset_builder(raw_dataset_path):
