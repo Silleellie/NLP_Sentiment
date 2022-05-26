@@ -2,6 +2,8 @@ import datasets
 import numpy as np
 import pandas as pd
 import torch.cuda
+from ray.tune.schedulers import ASHAScheduler
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer
@@ -19,11 +21,14 @@ class TransformersApproach:
 
     def __init__(self, model_name: str):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=5,
-                                                                        ignore_mismatched_sizes=True).to(device)
-
+        self.model_name = model_name
+        self.model = self.model_init()
         # load tagger
         self.tagger = SequenceTagger.load("flair/pos-english-fast")
+
+    def model_init(self):
+        return AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=5,
+                                                                  ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
     def dataset_builder(raw_dataset_path, cut=None):
@@ -32,10 +37,10 @@ class TransformersApproach:
         all_labels = list(train['Sentiment'])[:cut]
 
         train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7,
-                                                                              stratify=True)
+                                                                              stratify=all_labels)
         train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
                                                                                           train_size=.9,
-                                                                                          stratify=True)
+                                                                                          stratify=train_labels)
         # 'label' needed by the model
         train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
         validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
@@ -74,10 +79,10 @@ if __name__ == '__main__':
 
         return {'sklearn_accuracy': accuracy_score(labels, predictions)}
 
+    model = 'sshleifer/tiny-distilroberta-base'
+    t = TransformersApproach(model)
 
-    t = TransformersApproach('bert-base-uncased')
-
-    dataset = t.dataset_builder('../dataset/train.tsv', cut=10000)
+    dataset = t.dataset_builder('../dataset/train.tsv', cut=100)
 
     dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
 
@@ -97,8 +102,8 @@ if __name__ == '__main__':
                                       per_device_eval_batch_size=8)
 
     trainer = Trainer(
-        t.model,
-        training_args,
+        model_init=t.model_init,
+        args=training_args,
         train_dataset=dataset_formatted["train"],
         eval_dataset=dataset_formatted["validation"],
         data_collator=data_collator,
@@ -106,6 +111,14 @@ if __name__ == '__main__':
         compute_metrics=compute_metrics
     )
 
-    trainer.train()
+    best_trial = trainer.hyperparameter_search(
+        direction="maximize",
+        backend="ray",
+        # Choose among many libraries:
+        # https://docs.ray.io/en/latest/tune/api_docs/suggestion.html
+        search_alg=HyperOptSearch(metric="objective", mode="max"),
+        # Choose among schedulers:
+        # https://docs.ray.io/en/latest/tune/api_docs/schedulers.html
+        scheduler=ASHAScheduler(metric="objective", mode="max"))
 
-    print(trainer.evaluate(dataset_formatted["test"]))
+    print(best_trial)
