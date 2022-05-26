@@ -1,6 +1,5 @@
-import logging
 import os
-from typing import Dict, Optional, Tuple, List
+from typing import Optional, List
 
 import numpy as np
 from ray import tune
@@ -94,7 +93,7 @@ def train_transformer_hyperparam(config, checkpoint_dir=None):
 
     t = TransformersApproach(model_name_or_path)
 
-    dataset = TransformersApproach.dataset_builder('../dataset/train.tsv', cut=100)
+    dataset = config['dataset']
 
     dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
 
@@ -115,20 +114,23 @@ def train_transformer_hyperparam(config, checkpoint_dir=None):
         compute_metrics=compute_metrics,
         data_collator=data_collator,
     )
-    tune_trainer.train(model_name_or_path)
+    tune_trainer.train()
 
 
 def hyper_run(model_name):
+
+    dataset = TransformersApproach.dataset_builder('../dataset/train.tsv', cut=100)
 
     config = {
         # These 3 configs below were defined earlier
         "model_name": model_name,
         "data_dir": "test",
         "per_gpu_val_batch_size": 32,
-        "per_gpu_train_batch_size": tune.choice([16, 32, 64]),
+        "per_gpu_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
         "learning_rate": tune.uniform(1e-5, 5e-5),
         "weight_decay": tune.uniform(0.0, 0.3),
         "num_epochs": tune.choice([2, 3, 4, 5]),
+        "dataset": dataset
     }
 
     scheduler = PopulationBasedTraining(
@@ -154,13 +156,13 @@ def hyper_run(model_name):
         ])
 
     analysis = tune.run(
-        lambda _: train_transformer_hyperparam(config),
+        train_transformer_hyperparam,
         resources_per_trial={
             "cpu": 2,
             "gpu": 1
         },
         config=config,
-        num_samples=3,
+        num_samples=10,
         scheduler=scheduler,
         keep_checkpoints_num=3,
         checkpoint_score_attr="training_iteration",
@@ -170,3 +172,7 @@ def hyper_run(model_name):
 
     best_config = analysis.get_best_config(metric="eval_sklearn_accuracy", mode="max")
     print(best_config)
+
+
+if __name__ == '__main__':
+    hyper_run('albert-base-v2')
