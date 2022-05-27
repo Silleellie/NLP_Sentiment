@@ -72,7 +72,7 @@ class TransformersApproach:
         return {'Pos': tags}
 
 
-def run_hyperparameters(model_name, train_file_path):
+def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
     def compute_metrics(eval_preds):
         logits, labels = eval_preds
         predictions = np.argmax(logits, axis=-1)
