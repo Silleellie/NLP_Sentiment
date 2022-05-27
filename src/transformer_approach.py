@@ -134,7 +134,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         "seed": tune.randint(0, 43),
         "weight_decay": tune.uniform(0.0, 0.3),
         "learning_rate": tune.uniform(1e-4, 5e-5),
-        "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
+        "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
     }
 
     pbt_scheduler = PopulationBasedTraining(
@@ -148,7 +148,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
             "seed": tune.randint(0, 43),
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-4, 5e-5),
-            "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
+            "lr_scheduler_type": ['linear', 'cosine', 'polynomial']  # list and no 'choice' otherwise continuous error
         })
 
     best_trial = trainer.hyperparameter_search(
