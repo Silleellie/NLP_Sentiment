@@ -55,6 +55,7 @@ class TransformersApproach:
 
         test_dataset = datasets.Dataset.from_dict(test_dict)
 
+
         if with_additional_validation:
             dataset_dict = datasets.DatasetDict({"train": train_dataset,
                                                  "validation": validation_dataset,
@@ -91,7 +92,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
 
     t = TransformersApproach(model_name)
 
-    dataset = t.dataset_builder(train_file_path, cut=1000)
+    dataset = t.dataset_builder(train_file_path, cut=15000)
 
     dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
 
