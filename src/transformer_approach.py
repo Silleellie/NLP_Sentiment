@@ -31,38 +31,43 @@ class TransformersApproach:
                                                                   ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
-    def dataset_builder(raw_dataset_path, cut=None, with_additional_validation=True):
+    def dataset_builder(raw_dataset_path, cut=None, with_test_set=True):
         train = pd.read_csv(raw_dataset_path, sep="\t")
         all_texts = list(train['Phrase'])[:cut]
         all_labels = list(train['Sentiment'])[:cut]
 
-        train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7,
-                                                                              stratify=all_labels)
-        if with_additional_validation:
+        if with_test_set:
+            train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7,
+                                                                                  stratify=all_labels)
+
             train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
-                                                                                              train_size=.9,
+                                                                                              train_size=.8,
                                                                                               stratify=train_labels)
+
+            train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
+            test_dict = {'Phrase': test_texts, 'Sentiment': test_labels}
             validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
 
+            train_dataset = datasets.Dataset.from_dict(train_dict)
+            test_dataset = datasets.Dataset.from_dict(test_dict)
             validation_dataset = datasets.Dataset.from_dict(validation_dict)
 
-        # 'label' needed by the model
-        train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-
-        test_dict = {'Phrase': test_texts, 'Sentiment': test_labels}
-
-        train_dataset = datasets.Dataset.from_dict(train_dict)
-
-        test_dataset = datasets.Dataset.from_dict(test_dict)
-
-
-        if with_additional_validation:
             dataset_dict = datasets.DatasetDict({"train": train_dataset,
                                                  "validation": validation_dataset,
                                                  "test": test_dataset})
         else:
+            train_texts, validation_texts, train_labels, validation_labels = train_test_split(all_texts, all_labels,
+                                                                                              train_size=.8,
+                                                                                              stratify=all_labels)
+
+            train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
+            validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
+
+            train_dataset = datasets.Dataset.from_dict(train_dict)
+            validation_dataset = datasets.Dataset.from_dict(validation_dict)
+
             dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                                 "validation": test_dataset})
+                                                 "validation": validation_dataset})
 
         return dataset_dict
 
@@ -88,7 +93,6 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         predictions = np.argmax(logits, axis=-1)
 
         return {'sklearn_accuracy': accuracy_score(labels, predictions)}
-
 
     t = TransformersApproach(model_name)
 
@@ -161,6 +165,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
 
     return best_trial
 
+
 def final_train(model_name, train_file_path, best_trial):
     def compute_metrics(eval_preds):
         logits, labels = eval_preds
@@ -168,10 +173,9 @@ def final_train(model_name, train_file_path, best_trial):
 
         return {'sklearn_accuracy': accuracy_score(labels, predictions)}
 
-
     t = TransformersApproach(model_name)
 
-    dataset = t.dataset_builder(train_file_path, with_additional_validation=False)
+    dataset = t.dataset_builder(train_file_path)
 
     dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
 
