@@ -142,7 +142,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         backend="ray",
         scheduler=pbt_scheduler,
         n_trials=10,
-        resources_per_trial={"cpu": 2, "gpu": 1},
+        resources_per_trial={"cpu": cpu_number, "gpu": gpu_number},
         keep_checkpoints_num=3,
         local_dir="../hyper_search/",
         name="tune_transformer_pbt"
