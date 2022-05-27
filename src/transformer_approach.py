@@ -31,7 +31,7 @@ class TransformersApproach:
                                                                   ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
-    def dataset_builder(raw_dataset_path, cut=None, with_test_set=True):
+    def dataset_builder(raw_dataset_path, cut=None, with_test_set=False):
         train = pd.read_csv(raw_dataset_path, sep="\t")
         all_texts = list(train['Phrase'])[:cut]
         all_labels = list(train['Sentiment'])[:cut]
