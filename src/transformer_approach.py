@@ -134,7 +134,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         "seed": tune.randint(0, 43),
         "weight_decay": tune.uniform(0.0, 0.3),
         "learning_rate": tune.uniform(1e-4, 5e-5),
-        "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
+        "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
     }
 
     pbt_scheduler = PopulationBasedTraining(
@@ -148,7 +148,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
             "seed": tune.randint(0, 43),
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-4, 5e-5),
-            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
+            "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
         })
 
     best_trial = trainer.hyperparameter_search(
@@ -156,7 +156,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         direction="maximize",
         backend="ray",
         scheduler=pbt_scheduler,
-        n_trials=5,
+        n_trials=6,
         resources_per_trial={"cpu": cpu_number, "gpu": gpu_number},
         keep_checkpoints_num=1,
         local_dir="../hyper_search/",
@@ -189,7 +189,7 @@ def final_train(model_name, train_file_path, best_trial):
 
     training_args = TrainingArguments("../output/test-trainer",
                                       evaluation_strategy='epoch',
-                                      num_train_epochs=6,
+                                      num_train_epochs=5,
                                       optim='adamw_torch',
                                       per_device_train_batch_size=16,
                                       per_device_eval_batch_size=16,
