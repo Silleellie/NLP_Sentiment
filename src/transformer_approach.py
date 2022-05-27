@@ -31,28 +31,37 @@ class TransformersApproach:
                                                                   ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
-    def dataset_builder(raw_dataset_path, cut=None):
+    def dataset_builder(raw_dataset_path, cut=None, with_additional_validation=True):
         train = pd.read_csv(raw_dataset_path, sep="\t")
         all_texts = list(train['Phrase'])[:cut]
         all_labels = list(train['Sentiment'])[:cut]
 
         train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7,
                                                                               stratify=all_labels)
-        train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
-                                                                                          train_size=.9,
-                                                                                          stratify=train_labels)
+        if with_additional_validation:
+            train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
+                                                                                              train_size=.9,
+                                                                                              stratify=train_labels)
+            validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
+
+            validation_dataset = datasets.Dataset.from_dict(validation_dict)
+
         # 'label' needed by the model
         train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-        validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
+
         test_dict = {'Phrase': test_texts, 'Sentiment': test_labels}
 
         train_dataset = datasets.Dataset.from_dict(train_dict)
-        validation_dataset = datasets.Dataset.from_dict(validation_dict)
+
         test_dataset = datasets.Dataset.from_dict(test_dict)
 
-        dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                             "validation": validation_dataset,
-                                             "test": test_dataset})
+        if with_additional_validation:
+            dataset_dict = datasets.DatasetDict({"train": train_dataset,
+                                                 "validation": validation_dataset,
+                                                 "test": test_dataset})
+        else:
+            dataset_dict = datasets.DatasetDict({"train": train_dataset,
+                                                 "validation": test_dataset})
 
         return dataset_dict
 
@@ -82,7 +91,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
 
     t = TransformersApproach(model_name)
 
-    dataset = t.dataset_builder(train_file_path, cut=15000)
+    dataset = t.dataset_builder(train_file_path, cut=1000)
 
     dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
 
@@ -101,9 +110,8 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
                                       per_device_train_batch_size=16,
                                       per_device_eval_batch_size=16,
                                       disable_tqdm=True,
-                                      save_total_limit=1,
-                                      save_strategy='no',
-                                      load_best_model_at_end=False)
+                                      save_total_limit=3,
+                                      save_strategy='epoch')
 
     trainer = Trainer(
         model_init=lambda: t.model_init(),
@@ -121,6 +129,7 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         "seed": tune.randint(0, 43),
         "weight_decay": tune.uniform(0.0, 0.3),
         "learning_rate": tune.uniform(1e-4, 5e-5),
+        "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
     }
 
     pbt_scheduler = PopulationBasedTraining(
@@ -130,10 +139,11 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         perturbation_interval=1,
         hyperparam_mutations={
             "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
-            "num_train_epochs": tune.choice([2, 3, 4, 5]),
+            "num_train_epochs": [2, 3, 4, 5],
             "seed": tune.randint(0, 43),
             "weight_decay": tune.uniform(0.0, 0.3),
-            "learning_rate": tune.uniform(1e-5, 5e-5),
+            "learning_rate": tune.uniform(1e-4, 5e-5),
+            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
         })
 
     best_trial = trainer.hyperparameter_search(
@@ -141,11 +151,62 @@ def run_hyperparameters(model_name, train_file_path, cpu_number, gpu_number):
         direction="maximize",
         backend="ray",
         scheduler=pbt_scheduler,
-        n_trials=10,
+        n_trials=5,
         resources_per_trial={"cpu": cpu_number, "gpu": gpu_number},
-        keep_checkpoints_num=3,
+        keep_checkpoints_num=1,
         local_dir="../hyper_search/",
         name="tune_transformer_pbt"
     )
 
-    print(best_trial)
+    return best_trial
+
+def final_train(model_name, train_file_path, best_trial):
+    def compute_metrics(eval_preds):
+        logits, labels = eval_preds
+        predictions = np.argmax(logits, axis=-1)
+
+        return {'sklearn_accuracy': accuracy_score(labels, predictions)}
+
+
+    t = TransformersApproach(model_name)
+
+    dataset = t.dataset_builder(train_file_path, with_additional_validation=False)
+
+    dataset_pos = dataset.map(lambda single_item_dataset: t.pos_tagger_fn(single_item_dataset))
+
+    dataset_tokenized = dataset_pos.map(lambda single_item_dataset: t.tokenize_fn(single_item_dataset),
+                                        batched=True)
+
+    # this specific model expects label column
+    dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label').remove_columns(['Phrase', "Pos"])
+
+    data_collator = DataCollatorWithPadding(tokenizer=t.tokenizer)
+
+    training_args = TrainingArguments("../output/test-trainer",
+                                      evaluation_strategy='epoch',
+                                      num_train_epochs=6,
+                                      optim='adamw_torch',
+                                      per_device_train_batch_size=16,
+                                      per_device_eval_batch_size=16,
+                                      disable_tqdm=True,
+                                      save_total_limit=3,
+                                      save_strategy='epoch')
+
+    trainer = Trainer(
+        model_init=lambda: t.model_init(),
+        args=training_args,
+        train_dataset=dataset_formatted["train"],
+        eval_dataset=dataset_formatted["validation"],
+        data_collator=data_collator,
+        tokenizer=t.tokenizer,
+        compute_metrics=compute_metrics
+    )
+
+    for n, v in best_trial.hyperparameters.items():
+        setattr(trainer.args, n, v)
+
+    return trainer.train()
+
+
+if __name__ == '__main__':
+    run_hyperparameters('bert-base-uncased', '../dataset/train.tsv', 4, 1)
