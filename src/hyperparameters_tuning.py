@@ -17,10 +17,6 @@ from src.transformer_approach import TransformersApproach
 
 
 class TuneTransformerTrainer(transformers.Trainer):
-    def get_optimizers(self):
-        self.current_optimizer = self.optimizer
-        self.current_scheduler = self.lr_scheduler
-        return (self.current_optimizer, self.current_scheduler)
 
     def evaluate(self, eval_dataset=None, ignore_keys: Optional[List[str]] = None, metric_key_prefix: str = "eval"):
 
@@ -46,9 +42,9 @@ class TuneTransformerTrainer(transformers.Trainer):
                 f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}")
             self.save_model(output_dir)
             if self.is_world_process_zero():
-                torch.save(self.current_optimizer.state_dict(),
+                torch.save(self.optimizer.state_dict(),
                            os.path.join(output_dir, "optimizer.pt"))
-                torch.save(self.current_scheduler.state_dict(),
+                torch.save(self.lr_scheduler.state_dict(),
                            os.path.join(output_dir, "scheduler.pt"))
 
 
