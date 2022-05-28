@@ -128,7 +128,14 @@ class TransformersApproach:
             metric="eval_sklearn_accuracy",
             mode="max",
             perturbation_interval=1,
-            hyperparam_mutations=tune_config)
+            hyperparam_mutations={
+                "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
+                "num_train_epochs": [2, 3, 4, 5],
+                "seed": tune.randint(0, 43),
+                "weight_decay": tune.uniform(0.0, 0.3),
+                "learning_rate": tune.uniform(1e-4, 5e-5),
+                "lr_scheduler_type": ['linear', 'cosine', 'polynomial']  # list and no 'choice' otherwise continuous error
+        })
 
         best_trial = trainer.hyperparameter_search(
             hp_space=lambda _: tune_config,
