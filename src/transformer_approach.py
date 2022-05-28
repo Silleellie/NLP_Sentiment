@@ -6,6 +6,10 @@ from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from flair.data import Sentence
 from flair.models import SequenceTagger
+from ray import tune
+from ray.tune.schedulers import PopulationBasedTraining
+from sklearn.metrics import accuracy_score
+from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 
 torch.cuda.empty_cache()
 
@@ -26,48 +30,24 @@ class TransformersApproach:
                                                                   ignore_mismatched_sizes=True).to(device)
 
     @staticmethod
-    def dataset_builder(raw_dataset_path, cut=None, with_test_set=False):
-        train = pd.read_csv(raw_dataset_path, sep="\t")
-        all_texts = list(train['Phrase'])[:cut]
-        all_labels = list(train['Sentiment'])[:cut]
+    def dataset_builder(texts, labels, train_size=.8):
+        train_texts, validation_texts, train_labels, validation_labels = train_test_split(texts, labels,
+                                                                                            train_size=train_size,
+                                                                                            stratify=labels)
 
-        if with_test_set:
-            train_texts, test_texts, train_labels, test_labels = train_test_split(all_texts, all_labels, train_size=.7,
-                                                                                  stratify=all_labels)
+        train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
+        validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
 
-            train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
-                                                                                              train_size=.8,
-                                                                                              stratify=train_labels)
+        train_dataset = datasets.Dataset.from_dict(train_dict)
+        validation_dataset = datasets.Dataset.from_dict(validation_dict)
 
-            train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-            test_dict = {'Phrase': test_texts, 'Sentiment': test_labels}
-            validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
-
-            train_dataset = datasets.Dataset.from_dict(train_dict)
-            test_dataset = datasets.Dataset.from_dict(test_dict)
-            validation_dataset = datasets.Dataset.from_dict(validation_dict)
-
-            dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                                 "validation": validation_dataset,
-                                                 "test": test_dataset})
-        else:
-            train_texts, validation_texts, train_labels, validation_labels = train_test_split(all_texts, all_labels,
-                                                                                              train_size=.8,
-                                                                                              stratify=all_labels)
-
-            train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-            validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
-
-            train_dataset = datasets.Dataset.from_dict(train_dict)
-            validation_dataset = datasets.Dataset.from_dict(validation_dict)
-
-            dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                                 "validation": validation_dataset})
+        dataset_dict = datasets.DatasetDict({"train": train_dataset,
+                                            "validation": validation_dataset})
 
         return dataset_dict
 
-    def tokenize_fn(self, batch_item_dataset):
-        return self.tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"], truncation=True)
+    def tokenize_fn(self, batch_item_dataset, apply_truncation=True, apply_padding=True):
+        return self.tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"], truncation=apply_truncation, padding=apply_padding)
 
     def pos_tagger_fn(self, batch_item_dataset):
         # make example sentence
@@ -80,11 +60,105 @@ class TransformersApproach:
         tags = ' '.join(token.tag for token in sentence.tokens)
 
         return {'Pos': tags}
+    
+    def dataset_preprocessing(self, dataset_dict, apply_truncation=True, apply_padding=True):
+        dataset_pos = dataset_dict.map(lambda single_item_dataset: self.pos_tagger_fn(single_item_dataset))
+        dataset_tokenized = dataset_pos.map(lambda single_item_dataset: self.tokenize_fn(single_item_dataset, 
+                                            apply_truncation=apply_truncation, apply_padding=apply_padding), batched=True)
+        
+        return dataset_tokenized
+    
+    def __prepare_trainer(self, train_texts, train_labels, batch_size: int = 16, num_train_epochs: int = 5):
+        def compute_metrics(eval_preds):
+            logits, labels = eval_preds
+            predictions = np.argmax(logits, axis=-1)
 
-    def compute_prediction(self, output_file='./submission_1.csv'):
-        def tokenize_fn_padding(tokenizer, batch_item_dataset):
-            return tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"], truncation=True, padding=True)
+            return {'sklearn_accuracy': accuracy_score(labels, predictions)}
 
+        dataset = self.dataset_builder(train_texts, train_labels)
+        dataset_preprocessed = self.dataset_preprocessing(dataset, apply_padding=False)
+
+        # this specific model expects label column
+        dataset_formatted = dataset_preprocessed.rename_column('Sentiment', 'label').remove_columns(['Phrase', "Pos"])
+
+        data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+
+        training_args = TrainingArguments("../output/test-trainer",
+                                        evaluation_strategy='epoch',
+                                        num_train_epochs=num_train_epochs,
+                                        optim='adamw_torch',
+                                        per_device_train_batch_size=batch_size,
+                                        per_device_eval_batch_size=batch_size,
+                                        disable_tqdm=True,
+                                        save_total_limit=3,
+                                        save_strategy='epoch')
+
+        trainer = Trainer(
+            model_init=lambda: self.model_init(),
+            args=training_args,
+            train_dataset=dataset_formatted["train"],
+            eval_dataset=dataset_formatted["validation"],
+            data_collator=data_collator,
+            tokenizer=self.tokenizer,
+            compute_metrics=compute_metrics
+        )
+
+        return trainer
+
+    def train(self, train_texts, train_labels, batch_size: int = 16, num_train_epochs: int = 5):
+
+        trainer = self.__prepare_trainer(train_texts, train_labels, batch_size, num_train_epochs)
+        trainer.train()
+
+        return trainer
+    
+    def find_best_hyperparameters(self, trainer, cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 1):
+
+        tune_config = {
+                "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
+                "num_train_epochs": tune.choice([2, 3, 4, 5]),
+                "seed": tune.randint(0, 43),
+                "weight_decay": tune.uniform(0.0, 0.3),
+                "learning_rate": tune.uniform(1e-4, 5e-5),
+                "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
+        }
+
+        pbt_scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="eval_sklearn_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations=tune_config)
+
+        best_trial = trainer.hyperparameter_search(
+            hp_space=lambda _: tune_config,
+            direction="maximize",
+            backend="ray",
+            scheduler=pbt_scheduler,
+            n_trials=n_trials,
+            resources_per_trial={"cpu": cpu_number, "gpu": gpu_number},
+            keep_checkpoints_num=1,
+            local_dir="../hyper_search/",
+            name="tune_transformer_pbt"
+        )
+
+        return best_trial
+
+    def train_with_hyperparameters(self, texts, labels,
+                                   batch_size: int = 16, num_train_epochs: int = 5,
+                                   cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 1):
+        
+        trainer = self.__prepare_trainer(texts, labels, batch_size, num_train_epochs)
+        best_trial = self.find_best_hyperparameters(trainer, cpu_number, gpu_number, n_trials)
+
+        for n, v in best_trial.hyperparameters.items():
+            setattr(trainer.args, n, v)
+
+        trainer.train()
+
+        return trainer
+
+    def compute_prediction(self, test_texts, test_ids, output_file='../submission_1.csv'):
         def compute_prediction(single_item):
             ids = torch.tensor(single_item['input_ids'], dtype=torch.int32).to(device).unsqueeze(dim=0)
             token_type_ids = torch.tensor(single_item['token_type_ids'], dtype=torch.int32).to(device).unsqueeze(dim=0)
@@ -95,32 +169,62 @@ class TransformersApproach:
 
             return {'pred': prediction}
 
-        test_set_path = '../dataset/test.tsv'
-
-        test = pd.read_csv(test_set_path, sep="\t")
-
-        test_dict = {'Phrase': list(test["Phrase"])}
-
+        test_dict = {'Phrase': test_texts}
         dataset_dict = datasets.Dataset.from_dict(test_dict)
-
-        dataset_pos = dataset_dict.map(lambda single_item_dataset: self.pos_tagger_fn(single_item_dataset))
-
-        dataset_tokenized = dataset_pos.map(lambda single_item_dataset: tokenize_fn_padding(self.tokenizer,
-                                                                                            single_item_dataset),
-                                            batched=True)
-
-        # this specific model expects label column
-        dataset_formatted = dataset_tokenized.remove_columns(['Phrase', "Pos"])
+        dataset_preprocessed = self.dataset_preprocessing(dataset_dict)
+        dataset_formatted = dataset_preprocessed.remove_columns(['Phrase', 'Pos'])
 
         result = dataset_formatted.map(compute_prediction)
 
-        final_dict = {'PhraseId': test['PhraseId'], 'Sentiment': result['pred']}
+        final_dict = {'PhraseId': test_ids, 'Sentiment': result['pred']}
         final_df = pd.DataFrame(final_dict)
-
         final_df.to_csv(output_file, index=False)
+
+        return result
+
+# shortcut functions for quick training / testing
+
+def train_experiment(approach: TransformersApproach, train_dataset_path: str, cut: int = None,
+                    batch_size: int = 16, num_train_epochs: int = 5):
+    
+    train = pd.read_csv(train_dataset_path, sep="\t")
+    train_texts = train['Phrase'].to_list()
+    train_labels = train['Sentiment'].to_list()
+
+    if cut is not None:
+        train_texts = train_texts[:cut]
+        train_labels = train_labels[:cut]
+
+    return approach.train(train_texts, train_labels, batch_size, num_train_epochs)
+
+def train_with_hyperparameters_tuning_experiment(approach: TransformersApproach, train_dataset_path: str, 
+                                                cut: int = None,
+                                                batch_size: int = 16, num_train_epochs: int = 5,
+                                                cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 1):
+    
+    train = pd.read_csv(train_dataset_path, sep="\t")
+    train_texts = train['Phrase'].to_list()
+    train_labels = train['Sentiment'].to_list()
+
+    if cut is not None:
+        train_texts = train_texts[:cut]
+        train_labels = train_labels[:cut]
+
+    return approach.train_with_hyperparameters(train_texts, train_labels,
+                                                batch_size, num_train_epochs,
+                                                cpu_number, gpu_number, n_trials)
+
+def test_experiment(approach: TransformersApproach, test_dataset_path: str, output_file_path: str):
+
+    test = pd.read_csv(test_dataset_path, sep="\t")
+
+    test_texts = test['Phrase'].to_list()
+    test_ids = test['PhraseId'].to_list()
+
+    return approach.compute_prediction(test_texts, test_ids, output_file_path)
 
 
 if __name__ == '__main__':
 
-    t = TransformersApproach('checkpoint-15606')
-    t.compute_prediction('submission_1.csv')
+    train_path = '../dataset/train.tsv'
+    test_path = '../dataset/test.tsv'
