@@ -1,14 +1,20 @@
+import itertools
+
 import numpy as np
 import pandas as pd
 import torch.cuda
 from datasets import load_metric
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 
-from src.transformer_approach.dataset_builder import CustomDataset
+from src.transformer_approach.dataset_builder import CustomTrainVal
+import wandb
+
+wandb.init(project="Sentiment analysis", entity="nlp_leshi")
 
 torch.cuda.empty_cache()
 
@@ -32,7 +38,7 @@ class TransformersApproach:
             logits, labels = eval_preds
             predictions = np.argmax(logits, axis=-1)
 
-            return {'accuracy_metric': accuracy_metric.compute(predictions=predictions, references=labels)}
+            return accuracy_metric.compute(predictions=predictions, references=labels)
 
         data_collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
 
@@ -44,7 +50,8 @@ class TransformersApproach:
                                           per_device_eval_batch_size=batch_size,
                                           disable_tqdm=True,
                                           save_total_limit=3,
-                                          save_strategy='epoch')
+                                          save_strategy='epoch',
+                                          report_to='wandb')
 
         accuracy_metric = load_metric("accuracy")
 
@@ -71,7 +78,6 @@ class TransformersApproach:
                                    cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 3,
                                    output_model_folder: str = 'output/test_trainer',
                                    output_hyper_folder: str = 'hyper_search'):
-
         # find hyperparameters on the 20 percent of the dataset
         len_train_20_percent = int(len(dataset_formatted['train']) * 0.2)
         len_validation_20_percent = int(len(dataset_formatted['validation']) * 0.2)
@@ -132,25 +138,27 @@ class TransformersApproach:
         return trainer
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
-        def compute_single_prediction(single_item):
-            ids = torch.tensor(single_item['input_ids'], dtype=torch.int32).to(device).unsqueeze(dim=0)
-            token_type_ids = torch.tensor(single_item['token_type_ids'], dtype=torch.int32).to(device).unsqueeze(dim=0)
-            mask = torch.tensor(single_item['attention_mask'], dtype=torch.int32).to(device).unsqueeze(dim=0)
+        def compute_batch_prediction(single_item):
+            ids = single_item['input_ids'].to(device)
+            token_type_ids = single_item['token_type_ids'].to(device)
+            mask = single_item['attention_mask'].to(device)
 
-            logits = self.model(input_ids=ids, token_type_ids=token_type_ids, attention_mask=mask)
-            prediction = np.argmax(torch.flatten(logits.logits).to('cpu').detach().numpy(), axis=-1)
+            with torch.no_grad():
+                logits = self.model(input_ids=ids, token_type_ids=token_type_ids, attention_mask=mask)
+            prediction = torch.argmax(logits.logits, dim=-1).to('cpu')
 
-            return prediction
+            return [pred.item() for pred in prediction]
 
-        # IMPORTANT!!! TO TEST THIS, WE APPLY DYNAMIC PADDING
-        dataloader = DataLoader(dataset_formatted, collate_fn=DataCollatorWithPadding(tokenizer=self.tokenizer))
-        final_pred = [compute_single_prediction(single_item) for single_item in dataloader]
+        dataloader = DataLoader(dataset_formatted['test'], collate_fn=DataCollatorWithPadding(tokenizer=self.tokenizer),
+                                num_workers=2, batch_size=8)
+        final_pred = list(itertools.chain.from_iterable([compute_batch_prediction(batch)
+                                                         for batch in tqdm(dataloader)]))
 
-        final_dict = {'PhraseId': list(dataset_formatted['PhraseId']), 'Sentiment': final_pred}
+        final_dict = {'PhraseId': list(dataset_formatted['test']['PhraseId']), 'Sentiment': final_pred}
         final_df = pd.DataFrame(final_dict)
         final_df.to_csv(output_file, index=False)
 
-        return final_dict
+        return final_df
 
 
 if __name__ == '__main__':
@@ -159,12 +167,12 @@ if __name__ == '__main__':
 
     t = TransformersApproach('bert-base-uncased')
 
-    train_formatted = CustomDataset(train_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
+    train_formatted = CustomTrainVal(train_path, cut=1000).preprocess(t.tokenizer, mode='with_reference')
 
-    t.train(train_formatted, batch_size=8, num_train_epochs=3, output_model_folder='output/test_model')
+    t.train(train_formatted, batch_size=4, num_train_epochs=3, output_model_folder='output/test_model')
 
     # t.train_with_hyperparameters(train_formatted)
 
-    test_formatted = CustomDataset(test_path).preprocess(t.tokenizer, mode='only_phrase')
-
-    t.compute_prediction(test_formatted, output_file='submission.csv')
+    # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='with_reference')
+    #
+    # t.compute_prediction(test_formatted, output_file='submission.csv')
