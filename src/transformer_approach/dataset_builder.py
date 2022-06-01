@@ -1,31 +1,81 @@
+from abc import abstractmethod
+
 import datasets
 import pandas as pd
 from flair.data import Sentence
 from flair.models import SequenceTagger
 from sklearn.model_selection import train_test_split
 
+# load tagger as class attribute
+tagger = SequenceTagger.load("flair/pos-english-fast")
 
 class CustomDataset:
-
     def __init__(self, tsv_path: str, cut: int = None):
         df = pd.read_csv(tsv_path, sep='\t')
 
+        self.dataset_dict = self._build_dataset(df, cut)
+
+    @staticmethod
+    @abstractmethod
+    def _build_dataset(df: pd.DataFrame, cut: int) -> datasets.DatasetDict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def preprocess(self, tokenizer, mode='only_phrase') -> datasets.DatasetDict:
+        dataset_tokenized = None
+        if mode == 'only_phrase':
+
+            dataset_tokenized = self.dataset_dict.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item),
+                                                      batched=True)
+        elif mode == 'with_pos':
+
+            dataset_pos = self.dataset_dict.map(lambda batch_item: self.pos_tagger_fn(batch_item))
+            dataset_tokenized = dataset_pos.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item,
+                                                                                     field_2="Pos"),
+                                                batched=True)
+            dataset_tokenized = dataset_tokenized.remove_columns('Pos')
+        elif mode == 'with_reference':
+            dataset_tokenized = self.dataset_dict.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item,
+                                                                                           field_2="OriginalSentence"),
+                                                      batched=True)
+
+        dataset_formatted = dataset_tokenized.remove_columns(['Phrase', 'OriginalSentence'])
+
+        return dataset_formatted
+
+    @staticmethod
+    def tokenizer_fn(tokenizer, batch_item, field_2=None):
+        if field_2 is not None:
+            return tokenizer(batch_item["Phrase"], batch_item[field_2], truncation=True)
+
+        return tokenizer(batch_item['Phrase'])
+
+    @staticmethod
+    def pos_tagger_fn(single_item):
+        # make example sentence
+        sentence = Sentence(single_item["Phrase"])
+
+        # predict NER tags
+        tagger.predict(sentence)
+
+        # print sentence
+        tags = ' '.join(token.tag for token in sentence.tokens)
+
+        return {'Pos': tags}
+
+
+class CustomTrainVal(CustomDataset):
+    @staticmethod
+    def _build_dataset(df: pd.DataFrame, cut: int) -> datasets.DatasetDict:
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId', 'Sentiment'], inplace=True)
         all_original_sentences.rename(columns={'Phrase': 'OriginalSentence'}, inplace=True)
 
         expanded_df = df.merge(all_original_sentences, on='SentenceId')[:cut]
 
-        self.dataset_dict = self._build_dataset(expanded_df)
-        # load tagger
-        self.tagger = SequenceTagger.load("flair/pos-english-fast")
-
-    @staticmethod
-    def _build_dataset(df: pd.DataFrame) -> datasets.DatasetDict:
-
-        train_df, validation_df = train_test_split(df,
+        train_df, validation_df = train_test_split(expanded_df,
                                                    train_size=0.8,
-                                                   stratify=df['Sentiment'],
+                                                   stratify=expanded_df['Sentiment'],
                                                    shuffle=True)
 
         train_dict = {'Phrase': train_df['Phrase'].to_list(),
@@ -45,45 +95,31 @@ class CustomDataset:
         return dataset_dict
 
     def preprocess(self, tokenizer, mode='only_phrase') -> datasets.DatasetDict:
-        dataset_formatted = None
-        if mode == 'only_phrase':
+        dataset_tokenized = super().preprocess(tokenizer, mode)
 
-            dataset_tokenized = self.dataset_dict.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item),
-                                                      batched=True)
-
-            dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label').remove_columns('Phrase')
-        elif mode == 'with_pos':
-
-            dataset_pos = self.dataset_dict.map(lambda batch_item: self.pos_tagger_fn(batch_item))
-            dataset_tokenized = dataset_pos.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item,
-                                                                                     field_2="Pos"),
-                                                batched=True)
-
-            dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label').remove_columns(['Phrase', 'Pos'])
-        elif mode == 'with_reference':
-            dataset_tokenized = self.dataset_dict.map(lambda batch_item: self.tokenizer_fn(tokenizer, batch_item,
-                                                                                           field_2="OriginalSentence"),
-                                                      batched=True)
-
-            dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label')
-            dataset_formatted = dataset_formatted.remove_columns(['Phrase', 'OriginalSentence'])
+        dataset_formatted = dataset_tokenized.rename_column('Sentiment', 'label')
 
         return dataset_formatted
 
-    def tokenizer_fn(self, tokenizer, batch_item, field_2=None):
-        if field_2 is not None:
-            return tokenizer(batch_item["Phrase"], batch_item[field_2], truncation=True)
 
-        return tokenizer(batch_item['Phrase'])
+class CustomTest(CustomDataset):
+    @staticmethod
+    def _build_dataset(df: pd.DataFrame, cut: int) -> datasets.DatasetDict:
+        all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
+        all_original_sentences.drop(columns=['PhraseId'], inplace=True)
+        all_original_sentences.rename(columns={'Phrase': 'OriginalSentence'}, inplace=True)
 
-    def pos_tagger_fn(self, batch_item):
-        # make example sentence
-        sentence = Sentence(batch_item["Phrase"])
+        expanded_df = df.merge(all_original_sentences, on='SentenceId')[:cut]
 
-        # predict NER tags
-        self.tagger.predict(sentence)
+        test_dict = {'PhraseId': expanded_df['PhraseId'].to_list(),
+                     'Phrase': expanded_df['Phrase'].to_list(),
+                     'OriginalSentence': expanded_df['OriginalSentence'].to_list()}
 
-        # print sentence
-        tags = ' '.join(token.tag for token in sentence.tokens)
+        test_dataset = datasets.Dataset.from_dict(test_dict)
 
-        return {'Pos': tags}
+        dataset_dict = datasets.DatasetDict({"test": test_dataset})
+
+        return dataset_dict
+
+    def preprocess(self, tokenizer, mode='only_phrase') -> datasets.DatasetDict:
+        return super().preprocess(tokenizer, mode)
