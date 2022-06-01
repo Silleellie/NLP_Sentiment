@@ -11,3 +11,4 @@ ray~=1.12.1
 hyperopt~=0.2.7
 redis~=4.3.1
 ray[tune]
+spacy~=3.3.0
