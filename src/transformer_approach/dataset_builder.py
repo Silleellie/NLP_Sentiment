@@ -7,14 +7,14 @@ from sklearn.model_selection import train_test_split
 
 class CustomDataset:
 
-    def __init__(self, tsv_path: str):
+    def __init__(self, tsv_path: str, cut: int = None):
         df = pd.read_csv(tsv_path, sep='\t')
 
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId', 'Sentiment'], inplace=True)
         all_original_sentences.rename(columns={'Phrase': 'OriginalSentence'}, inplace=True)
 
-        expanded_df = df.merge(all_original_sentences, on='SentenceId')
+        expanded_df = df.merge(all_original_sentences, on='SentenceId')[:cut]
 
         self.dataset_dict = self._build_dataset(expanded_df)
         # load tagger

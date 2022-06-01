@@ -159,7 +159,7 @@ if __name__ == '__main__':
 
     t = TransformersApproach('bert-base-uncased')
 
-    train_formatted = CustomDataset(train_path).preprocess(t.tokenizer, mode='only_phrase')
+    train_formatted = CustomDataset(train_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
 
     t.train(train_formatted, batch_size=8, num_train_epochs=3, output_model_folder='output/test_model')
 
