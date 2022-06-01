@@ -25,7 +25,8 @@ class CustomDataset:
 
         train_df, validation_df = train_test_split(df,
                                                    train_size=0.8,
-                                                   stratify=df['Sentiment'])
+                                                   stratify=df['Sentiment'],
+                                                   shuffle=True)
 
         train_dict = {'Phrase': train_df['Phrase'].to_list(),
                       'Sentiment': train_df['Sentiment'].to_list(),
