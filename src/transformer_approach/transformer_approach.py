@@ -1,9 +1,13 @@
 import itertools
 
+import shutil
+
 import numpy as np
 import pandas as pd
 import torch.cuda
 from datasets import load_metric
+from ray.tune.integration.wandb import WandbLogger
+from ray.tune.logger import DEFAULT_LOGGERS
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -11,10 +15,13 @@ from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 
-from src.transformer_approach.dataset_builder import CustomTrainVal
+from src.transformer_approach.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
-wandb.init(project="Sentiment analysis", entity="nlp_leshi")
+wandb.init(project="Sentiment_analysis", entity="nlp_leshi")
+
+# to disable wandb
+# wandb.init(mode='disabled')
 
 torch.cuda.empty_cache()
 
@@ -91,13 +98,25 @@ class TransformersApproach:
         # parameters of the initialized trainer will be overridden with those of the best trial
         trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder)
 
+        # with hyperparmater you specify wandb in ray tune config
+        # trainer.args.report_to = None
+
         tune_config = {
+            # search space
             "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
             "num_train_epochs": tune.choice([2, 3, 4, 5]),
             "seed": tune.randint(0, 43),
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-4, 5e-5),
-            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial'])
+            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial']),
+
+            # wandb configuration
+            # "wandb": {
+            #     "project": "Sentiment_analysis",
+            #     "entity": "nlp_leshi",
+            #     # "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
+            #     "log_config": True
+            # }
         }
 
         pbt_scheduler = PopulationBasedTraining(
@@ -125,7 +144,9 @@ class TransformersApproach:
             resources_per_trial={"cpu": cpu_number, "gpu": gpu_number},
             keep_checkpoints_num=1,
             local_dir=output_hyper_folder,
-            name="tune_transformer_pbt"
+            name="tune_transformer_pbt",
+            log_to_file=True,
+            # loggers=DEFAULT_LOGGERS + (WandbLogger, )
         )
 
         for n, v in best_trial.hyperparameters.items():
@@ -134,6 +155,9 @@ class TransformersApproach:
         # train on full dataset
         trainer.train_dataset = dataset_formatted['train']
         trainer.eval_dataset = dataset_formatted['validation']
+
+        # re enable wandb
+        trainer.args.report_to = "wandb"
 
         return trainer
 
@@ -154,7 +178,7 @@ class TransformersApproach:
         final_pred = list(itertools.chain.from_iterable([compute_batch_prediction(batch)
                                                          for batch in tqdm(dataloader)]))
 
-        final_dict = {'PhraseId': list(dataset_formatted['test']['PhraseId']), 'Sentiment': final_pred}
+        final_dict = {'PhraseId': list(dataset_formatted['test']), 'Sentiment': final_pred}
         final_df = pd.DataFrame(final_dict)
         final_df.to_csv(output_file, index=False)
 
@@ -165,14 +189,36 @@ if __name__ == '__main__':
     train_path = '../../dataset/train.tsv'
     test_path = '../../dataset/test.tsv'
 
-    t = TransformersApproach('bert-base-uncased')
+    model_name = 'prajjwal1/bert-small'
 
-    train_formatted = CustomTrainVal(train_path, cut=1000).preprocess(t.tokenizer, mode='with_reference')
+    accuracy_metric = load_metric("accuracy")
 
-    t.train(train_formatted, batch_size=4, num_train_epochs=3, output_model_folder='output/test_model')
+    t = TransformersApproach(model_name)
 
-    # t.train_with_hyperparameters(train_formatted)
+    train_formatted_list = CustomTrainValKF(train_path, cut=1000, n_splits=2).preprocess(t.tokenizer,
+                                                                                         mode='only_phrase')
 
-    # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='with_reference')
+    # for i, train_formatted in enumerate(train_formatted_list):
+    #     model_name = model_name.replace('/', '_')
+    #
+    #     output_folder_split = f'output/{model_name}/test_split_{i}'
+    #
+    #     shutil.rmtree(output_folder_split, ignore_errors=True)
+    #
+    #     trainer = t.train(train_formatted, batch_size=2, num_train_epochs=2,
+    #                       output_model_folder=output_folder_split)
+
+    for i, train_formatted in enumerate(train_formatted_list):
+        model_name = model_name.replace('/', '_')
+
+        output_model_split = f'output/{model_name}/test_split_{i}'
+        output_hyper_folder = f'output/{model_name}/test_split_{i}/hyper'
+
+        shutil.rmtree(output_model_split, ignore_errors=True)
+
+        trainer = t.train_with_hyperparameters(train_formatted, output_model_folder=output_model_split, n_trials=2,
+                                               output_hyper_folder=output_hyper_folder)
+
+    # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
     #
     # t.compute_prediction(test_formatted, output_file='submission.csv')
