@@ -142,7 +142,7 @@ class TransformersApproach:
             callbacks=[WandbLoggerCallback(
                 project="Sentiment_analysis",
                 entity='nlp_leshi',
-                api_key_file="b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
+                api_key="b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
                 log_config=True)]
         )
 
