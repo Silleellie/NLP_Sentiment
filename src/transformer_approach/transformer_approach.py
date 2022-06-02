@@ -1,4 +1,5 @@
 import itertools
+import os
 
 import shutil
 
@@ -6,6 +7,7 @@ import numpy as np
 import pandas as pd
 import torch.cuda
 from datasets import load_metric
+from ray.tune import CLIReporter
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -16,6 +18,8 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from src.transformer_approach.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
+# import os
+# os.environ["WANDB_DISABLED"] = "true"
 
 torch.cuda.empty_cache()
 
@@ -34,7 +38,7 @@ class TransformersApproach:
                                                                   ignore_mismatched_sizes=True)
 
     def _prepare_trainer(self, dataset_formatted, batch_size: int = 16, num_train_epochs: int = 5,
-                         output_model_folder: str = 'output/test_trainer'):
+                         output_model_folder: str = 'output/test_trainer', report_to: str = "none"):
         def compute_metrics(eval_preds, accuracy_metric):
             logits, labels = eval_preds
             predictions = np.argmax(logits, axis=-1)
@@ -52,7 +56,7 @@ class TransformersApproach:
                                           disable_tqdm=True,
                                           save_total_limit=3,
                                           save_strategy='epoch',
-                                          report_to='wandb',
+                                          report_to=report_to,
                                           logging_strategy='epoch')
 
         accuracy_metric = load_metric("accuracy")
@@ -71,7 +75,6 @@ class TransformersApproach:
 
     def train(self, dataset_formatted, name_wandb: str,
               batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer'):
-
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
         trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder)
@@ -82,9 +85,10 @@ class TransformersApproach:
         return trainer
 
     def train_with_hyperparameters(self, dataset_formatted, name_wandb: str,
-                                   cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 3,
+                                   cpu_number: int = 2, gpu_number: int = 1, n_trials: int = 3,
                                    output_model_folder: str = 'output/test_trainer',
-                                   output_hyper_folder: str = 'hyper_search',):
+                                   output_hyper_folder: str = 'hyper_search'):
+
         # find hyperparameters on the 20 percent of the dataset
         len_train_20_percent = int(len(dataset_formatted['train']) * 0.2)
         len_validation_20_percent = int(len(dataset_formatted['validation']) * 0.2)
@@ -96,7 +100,11 @@ class TransformersApproach:
         dataset_shuffled['validation'] = cut_validation
 
         # parameters of the initialized trainer will be overridden with those of the best trial
-        trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder)
+        # also disabled wandb for hyperparameter tuning
+        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", reinit=True)
+
+        trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder,
+                                        report_to="none")
 
         tune_config = {
             # search space
@@ -124,6 +132,18 @@ class TransformersApproach:
                 "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
             })
 
+        reporter = CLIReporter(
+            parameter_columns={
+                "weight_decay": "w_decay",
+                "learning_rate": "lr",
+                "per_device_train_batch_size": "batch_size",
+                "num_train_epochs": "num_epochs",
+                "seed": "seed",
+                "lr_scheduler_type": "lr_scheduler",
+            },
+            metric_columns=["eval_accuracy", "eval_loss", "epoch"],
+        )
+
         best_trial = trainer.hyperparameter_search(
             hp_space=lambda _: tune_config,
             direction="maximize",
@@ -135,22 +155,26 @@ class TransformersApproach:
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
             reuse_actors=True,
+            progress_reporter=reporter
         )
-
-        for n, v in best_trial.hyperparameters.items():
-            setattr(trainer.args, n, v)
-
-        # train on full dataset
-        trainer.train_dataset = dataset_formatted['train']
-        trainer.eval_dataset = dataset_formatted['validation']
-
-        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
-
-        trainer.train()
 
         run.finish()
 
-        return trainer
+        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
+
+        # train on full dataset and re-enabled wandb for best trial run
+        mocked_trainer = self._prepare_trainer(dataset_formatted, output_model_folder=output_model_folder,
+                                               report_to="wandb")
+
+        # overwrite mocked trainer args with those of the best run
+        for n, v in best_trial.hyperparameters.items():
+            setattr(mocked_trainer.args, n, v)
+
+        mocked_trainer.train()
+
+        run.finish()
+
+        return mocked_trainer
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
         def compute_batch_prediction(single_item):
@@ -205,7 +229,6 @@ if __name__ == '__main__':
 
     # ----------- train with hyperparameters search ------------
     for i, train_formatted in enumerate(train_formatted_list):
-
         model_name = model_name.replace('/', '_')
 
         output_model_split = f'output/{model_name}/test_split_{i}'
