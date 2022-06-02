@@ -115,7 +115,7 @@ class TransformersApproach:
             "wandb": {
                 "project": "Sentiment_analysis",
                 "entity": "nlp_leshi",
-                # "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
+                "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
                 "log_config": True
             }
         }
