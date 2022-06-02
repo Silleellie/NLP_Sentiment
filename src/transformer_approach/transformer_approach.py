@@ -147,7 +147,7 @@ class TransformersApproach:
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
             reuse_actors=True,
-            loggers=DEFAULT_LOGGERS + (WandbLogger, )
+            loggers=[WandbLogger]
         )
 
         for n, v in best_trial.hyperparameters.items():
@@ -156,6 +156,8 @@ class TransformersApproach:
         # train on full dataset
         trainer.train_dataset = dataset_formatted['train']
         trainer.eval_dataset = dataset_formatted['validation']
+
+        trainer.train()
 
         return trainer
 
@@ -197,7 +199,7 @@ if __name__ == '__main__':
                                                                                          mode='only_phrase')
 
     # for i, train_formatted in enumerate(train_formatted_list):
-    #     wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
+    #     run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
     #
     #     model_name = model_name.replace('/', '_')
     #
@@ -207,6 +209,7 @@ if __name__ == '__main__':
     #
     #     trainer = t.train(train_formatted, batch_size=2, num_train_epochs=2,
     #                       output_model_folder=output_folder_split)
+    #     run.finish()
 
     for i, train_formatted in enumerate(train_formatted_list):
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
@@ -219,7 +222,7 @@ if __name__ == '__main__':
         shutil.rmtree(output_model_split, ignore_errors=True)
 
         trainer = t.train_with_hyperparameters(train_formatted, output_model_folder=output_model_split, n_trials=2,
-                                               output_hyper_folder=output_hyper_folder)
+                                               output_hyper_folder=output_hyper_folder, cpu_number=2)
 
         run.finish()
     # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
