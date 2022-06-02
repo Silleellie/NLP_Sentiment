@@ -18,7 +18,7 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from src.transformer_approach.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
-wandb.init(project="Sentiment_analysis", entity="nlp_leshi")
+
 
 # to disable wandb
 # wandb.init(mode='disabled')
@@ -58,7 +58,8 @@ class TransformersApproach:
                                           disable_tqdm=True,
                                           save_total_limit=3,
                                           save_strategy='epoch',
-                                          report_to='wandb')
+                                          report_to='wandb',
+                                          logging_strategy='epoch')
 
         accuracy_metric = load_metric("accuracy")
 
@@ -121,12 +122,12 @@ class TransformersApproach:
 
         pbt_scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
-            metric="eval_sklearn_accuracy",
+            metric="eval_accuracy",
             mode="max",
             perturbation_interval=1,
             hyperparam_mutations={
                 "per_device_train_batch_size": tune.choice([4, 8, 16, 32, 64]),
-                "num_train_epochs": [2, 3, 4, 5],
+                # "num_train_epochs": [2, 3, 4, 5],
                 "seed": tune.randint(0, 43),
                 "weight_decay": tune.uniform(0.0, 0.3),
                 "learning_rate": tune.uniform(1e-4, 5e-5),
@@ -146,6 +147,7 @@ class TransformersApproach:
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
             log_to_file=True,
+            reuse_actors=True
             # loggers=DEFAULT_LOGGERS + (WandbLogger, )
         )
 
@@ -199,6 +201,8 @@ if __name__ == '__main__':
                                                                                          mode='only_phrase')
 
     # for i, train_formatted in enumerate(train_formatted_list):
+    #     wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
+    #
     #     model_name = model_name.replace('/', '_')
     #
     #     output_folder_split = f'output/{model_name}/test_split_{i}'
@@ -209,6 +213,8 @@ if __name__ == '__main__':
     #                       output_model_folder=output_folder_split)
 
     for i, train_formatted in enumerate(train_formatted_list):
+        wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
+
         model_name = model_name.replace('/', '_')
 
         output_model_split = f'output/{model_name}/test_split_{i}'
