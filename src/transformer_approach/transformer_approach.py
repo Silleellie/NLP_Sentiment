@@ -104,7 +104,7 @@ class TransformersApproach:
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", reinit=True)
 
         trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder,
-                                        report_to="none")
+                                        report_to="wandb")
 
         tune_config = {
             # search space
