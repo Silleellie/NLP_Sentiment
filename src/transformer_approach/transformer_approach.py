@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch.cuda
 from datasets import load_metric
-from ray.tune.integration.wandb import WandbLogger
+from ray.tune.integration.wandb import WandbLogger, WandbLoggerCallback
 from ray.tune.logger import DEFAULT_LOGGERS
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -110,14 +110,6 @@ class TransformersApproach:
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-4, 5e-5),
             "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial']),
-
-            # wandb configuration
-            "wandb": {
-                "project": "Sentiment_analysis",
-                "entity": "nlp_leshi",
-                "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
-                "log_config": True
-            }
         }
 
         pbt_scheduler = PopulationBasedTraining(
@@ -147,7 +139,11 @@ class TransformersApproach:
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
             reuse_actors=True,
-            loggers=[WandbLogger]
+            callbacks=[WandbLoggerCallback(
+                project="Sentiment_analysis",
+                entity='nlp_leshi',
+                api_key_file="b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
+                log_config=True)]
         )
 
         for n, v in best_trial.hyperparameters.items():
