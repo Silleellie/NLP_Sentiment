@@ -112,12 +112,12 @@ class TransformersApproach:
             "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial']),
 
             # wandb configuration
-            # "wandb": {
-            #     "project": "Sentiment_analysis",
-            #     "entity": "nlp_leshi",
-            #     # "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
-            #     "log_config": True
-            # }
+            "wandb": {
+                "project": "Sentiment_analysis",
+                "entity": "nlp_leshi",
+                # "api_key": "b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
+                "log_config": True
+            }
         }
 
         pbt_scheduler = PopulationBasedTraining(
@@ -146,8 +146,8 @@ class TransformersApproach:
             keep_checkpoints_num=1,
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
-            reuse_actors=True
-            # loggers=DEFAULT_LOGGERS + (WandbLogger, )
+            reuse_actors=True,
+            loggers=DEFAULT_LOGGERS + (WandbLogger, )
         )
 
         for n, v in best_trial.hyperparameters.items():
@@ -156,9 +156,6 @@ class TransformersApproach:
         # train on full dataset
         trainer.train_dataset = dataset_formatted['train']
         trainer.eval_dataset = dataset_formatted['validation']
-
-        # re enable wandb
-        trainer.args.report_to = "wandb"
 
         return trainer
 
@@ -212,7 +209,7 @@ if __name__ == '__main__':
     #                       output_model_folder=output_folder_split)
 
     for i, train_formatted in enumerate(train_formatted_list):
-        wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
+        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
 
         model_name = model_name.replace('/', '_')
 
@@ -224,6 +221,7 @@ if __name__ == '__main__':
         trainer = t.train_with_hyperparameters(train_formatted, output_model_folder=output_model_split, n_trials=2,
                                                output_hyper_folder=output_hyper_folder)
 
+        run.finish()
     # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
     #
     # t.compute_prediction(test_formatted, output_file='submission.csv')
