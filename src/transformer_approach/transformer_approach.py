@@ -146,7 +146,6 @@ class TransformersApproach:
             keep_checkpoints_num=1,
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
-            log_to_file=True,
             reuse_actors=True
             # loggers=DEFAULT_LOGGERS + (WandbLogger, )
         )
