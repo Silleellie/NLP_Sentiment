@@ -6,8 +6,6 @@ import numpy as np
 import pandas as pd
 import torch.cuda
 from datasets import load_metric
-from ray.tune.integration.wandb import WandbLogger, WandbLoggerCallback
-from ray.tune.logger import DEFAULT_LOGGERS
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -18,10 +16,6 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from src.transformer_approach.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
-
-
-# to disable wandb
-# wandb.init(mode='disabled')
 
 torch.cuda.empty_cache()
 
@@ -75,17 +69,22 @@ class TransformersApproach:
 
         return trainer
 
-    def train(self, dataset_formatted, batch_size: int = 16, num_train_epochs: int = 5,
-              output_model_folder='output/test_trainer'):
+    def train(self, dataset_formatted, name_wandb: str,
+              batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer'):
+
+        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
+
         trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder)
         trainer.train()
 
+        run.finish()
+
         return trainer
 
-    def train_with_hyperparameters(self, dataset_formatted,
+    def train_with_hyperparameters(self, dataset_formatted, name_wandb: str,
                                    cpu_number: int = 1, gpu_number: int = 1, n_trials: int = 3,
                                    output_model_folder: str = 'output/test_trainer',
-                                   output_hyper_folder: str = 'hyper_search'):
+                                   output_hyper_folder: str = 'hyper_search',):
         # find hyperparameters on the 20 percent of the dataset
         len_train_20_percent = int(len(dataset_formatted['train']) * 0.2)
         len_validation_20_percent = int(len(dataset_formatted['validation']) * 0.2)
@@ -98,9 +97,6 @@ class TransformersApproach:
 
         # parameters of the initialized trainer will be overridden with those of the best trial
         trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder)
-
-        # with hyperparmater you specify wandb in ray tune config
-        # trainer.args.report_to = None
 
         tune_config = {
             # search space
@@ -139,11 +135,6 @@ class TransformersApproach:
             local_dir=output_hyper_folder,
             name="tune_transformer_pbt",
             reuse_actors=True,
-            callbacks=[WandbLoggerCallback(
-                project="Sentiment_analysis",
-                entity='nlp_leshi',
-                api_key="b99fa531f482e6043fc5833d9e5ad81bb5d35c2f",
-                log_config=True)]
         )
 
         for n, v in best_trial.hyperparameters.items():
@@ -153,7 +144,11 @@ class TransformersApproach:
         trainer.train_dataset = dataset_formatted['train']
         trainer.eval_dataset = dataset_formatted['validation']
 
+        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
+
         trainer.train()
+
+        run.finish()
 
         return trainer
 
@@ -191,11 +186,12 @@ if __name__ == '__main__':
 
     t = TransformersApproach(model_name)
 
+    # --------- build splitted stratify kfold dataset ---------
     train_formatted_list = CustomTrainValKF(train_path, cut=1000, n_splits=2).preprocess(t.tokenizer,
                                                                                          mode='only_phrase')
 
+    # -------------------- standard train ---------------------
     # for i, train_formatted in enumerate(train_formatted_list):
-    #     run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
     #
     #     model_name = model_name.replace('/', '_')
     #
@@ -203,12 +199,12 @@ if __name__ == '__main__':
     #
     #     shutil.rmtree(output_folder_split, ignore_errors=True)
     #
-    #     trainer = t.train(train_formatted, batch_size=2, num_train_epochs=2,
+    #     trainer = t.train(train_formatted, f'{model_name}_split_{i}',
+    #                       batch_size=2, num_train_epochs=2,
     #                       output_model_folder=output_folder_split)
-    #     run.finish()
 
+    # ----------- train with hyperparameters search ------------
     for i, train_formatted in enumerate(train_formatted_list):
-        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=f'split_{i}', reinit=True)
 
         model_name = model_name.replace('/', '_')
 
@@ -217,10 +213,11 @@ if __name__ == '__main__':
 
         shutil.rmtree(output_model_split, ignore_errors=True)
 
-        trainer = t.train_with_hyperparameters(train_formatted, output_model_folder=output_model_split, n_trials=2,
+        trainer = t.train_with_hyperparameters(train_formatted, f'{model_name}_split_{i}_best',
+                                               output_model_folder=output_model_split, n_trials=2,
                                                output_hyper_folder=output_hyper_folder, cpu_number=2)
 
-        run.finish()
+    # ----------------- build submission csv -------------------
     # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
     #
     # t.compute_prediction(test_formatted, output_file='submission.csv')
