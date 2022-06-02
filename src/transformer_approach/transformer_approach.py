@@ -72,21 +72,27 @@ class TransformersApproach:
 
         return trainer
 
-    def train(self, dataset_formatted, name_wandb: str,
+    def train(self, dataset_formatted, name_wandb: str, best_trial=None,
               batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer'):
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
-        trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder)
+        trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder,
+                                        report_to="wandb")
+        if best_trial is not None:
+            # overwrite mocked trainer args with those of the best run
+            for n, v in best_trial.hyperparameters.items():
+                setattr(trainer.args, n, v)
+
         trainer.train()
 
         run.finish()
 
         return trainer
 
-    def train_with_hyperparameters(self, dataset_formatted, name_wandb: str,
-                                   cpu_number: int = 2, gpu_number: int = 1, n_trials: int = 3,
-                                   output_model_folder: str = 'output/test_trainer',
-                                   output_hyper_folder: str = 'hyper_search'):
+    def find_best_hyperparameters(self, dataset_formatted,
+                                  cpu_number: int = 2, gpu_number: int = 1, n_trials: int = 3,
+                                  output_model_folder: str = 'output/test_trainer',
+                                  output_hyper_folder: str = 'hyper_search'):
 
         # find hyperparameters on the 20 percent of the dataset
         len_train_20_percent = int(len(dataset_formatted['train']) * 0.2)
@@ -155,21 +161,7 @@ class TransformersApproach:
             progress_reporter=reporter
         )
 
-        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
-
-        # train on full dataset and re-enabled wandb for best trial run
-        mocked_trainer = self._prepare_trainer(dataset_formatted, output_model_folder=output_model_folder,
-                                               report_to="wandb")
-
-        # overwrite mocked trainer args with those of the best run
-        for n, v in best_trial.hyperparameters.items():
-            setattr(mocked_trainer.args, n, v)
-
-        mocked_trainer.train()
-
-        run.finish()
-
-        return mocked_trainer
+        return best_trial
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
         def compute_batch_prediction(single_item):
@@ -205,6 +197,12 @@ if __name__ == '__main__':
 
     t = TransformersApproach(model_name)
 
+    # -------------- find best hyperparameters ----------------
+    # hold out for finding best hyperparameters otherwise very expensive process
+    [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
+                                                                                              mode='only_phrase')
+    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
+
     # --------- build splitted stratify kfold dataset ---------
     train_formatted_list = CustomTrainValKF(train_path, cut=1000, n_splits=2).preprocess(t.tokenizer,
                                                                                          mode='only_phrase')
@@ -231,9 +229,10 @@ if __name__ == '__main__':
 
         shutil.rmtree(output_model_split, ignore_errors=True)
 
-        trainer = t.train_with_hyperparameters(train_formatted, f'{model_name}_split_{i}_best',
-                                               output_model_folder=output_model_split, n_trials=2,
-                                               output_hyper_folder=output_hyper_folder, cpu_number=2)
+        trainer = t.train(train_formatted,
+                          name_wandb=f'{model_name}_split_{i}_best',
+                          best_trial=best_trial,
+                          output_model_folder=output_model_split)
 
     # ----------------- build submission csv -------------------
     # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
