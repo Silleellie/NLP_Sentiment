@@ -1,5 +1,4 @@
 import itertools
-import os
 
 import shutil
 
@@ -101,8 +100,6 @@ class TransformersApproach:
 
         # parameters of the initialized trainer will be overridden with those of the best trial
         # also disabled wandb for hyperparameter tuning
-        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", reinit=True)
-
         trainer = self._prepare_trainer(dataset_shuffled, output_model_folder=output_model_folder,
                                         report_to="none")
 
@@ -113,7 +110,7 @@ class TransformersApproach:
             "seed": tune.randint(0, 43),
             "weight_decay": tune.uniform(0.0, 0.3),
             "learning_rate": tune.uniform(1e-4, 5e-5),
-            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial']),
+            "lr_scheduler_type": tune.choice(['linear', 'cosine', 'polynomial', "cosine_with_restarts"]),
         }
 
         pbt_scheduler = PopulationBasedTraining(
@@ -129,7 +126,7 @@ class TransformersApproach:
                 "learning_rate": tune.uniform(1e-4, 5e-5),
 
                 # list and no 'choice()' otherwise continuous error
-                "lr_scheduler_type": ['linear', 'cosine', 'polynomial']
+                "lr_scheduler_type": ['linear', 'cosine', 'polynomial', "cosine_with_restarts"]
             })
 
         reporter = CLIReporter(
@@ -157,8 +154,6 @@ class TransformersApproach:
             reuse_actors=True,
             progress_reporter=reporter
         )
-
-        run.finish()
 
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
