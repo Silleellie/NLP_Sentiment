@@ -36,7 +36,7 @@ class TransformersApproach:
         model = AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=5,
                                                                    ignore_mismatched_sizes=True)
 
-        if t.tokenizer.pad_token is None:
+        if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             model.config.pad_token_id = self.tokenizer.pad_token_id
 
