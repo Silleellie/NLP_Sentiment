@@ -33,8 +33,14 @@ class TransformersApproach:
         self.model = self.model_init().to(device)
 
     def model_init(self):
-        return AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=5,
-                                                                  ignore_mismatched_sizes=True)
+        model = AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=5,
+                                                                   ignore_mismatched_sizes=True)
+
+        if t.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            model.config.pad_token_id = self.tokenizer.pad_token_id
+
+        return model
 
     def _prepare_trainer(self, dataset_formatted, batch_size: int = 16, num_train_epochs: int = 5,
                          output_model_folder: str = 'output/test_trainer', report_to: str = "none"):
@@ -73,11 +79,12 @@ class TransformersApproach:
         return trainer
 
     def train(self, dataset_formatted, name_wandb: str, best_trial=None,
-              batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer'):
+              batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer',
+              report_to: str = "none"):
         run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
         trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder,
-                                        report_to="wandb")
+                                        report_to=report_to)
         if best_trial is not None:
             # overwrite mocked trainer args with those of the best run
             for n, v in best_trial.hyperparameters.items():
@@ -191,7 +198,7 @@ if __name__ == '__main__':
     train_path = '../../dataset/train.tsv'
     test_path = '../../dataset/test.tsv'
 
-    model_name = 'prajjwal1/bert-small'
+    model_name = 'gpt2'
 
     accuracy_metric = load_metric("accuracy")
 
@@ -199,26 +206,25 @@ if __name__ == '__main__':
 
     # -------------- find best hyperparameters ----------------
     # hold out for finding best hyperparameters otherwise very expensive process
-    [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
-                                                                                              mode='only_phrase')
-    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
+    # [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
+    #                                                                                           mode='only_phrase')
+    # best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
 
     # --------- build splitted stratify kfold dataset ---------
-    train_formatted_list = CustomTrainValKF(train_path, cut=1000, n_splits=2).preprocess(t.tokenizer,
-                                                                                         mode='only_phrase')
+    train_formatted_list = CustomTrainValKF(train_path, cut=100, n_splits=2).preprocess(t.tokenizer,
+                                                                                        mode='only_phrase')
 
     # -------------------- standard train ---------------------
-    # for i, train_formatted in enumerate(train_formatted_list):
-    #
-    #     model_name = model_name.replace('/', '_')
-    #
-    #     output_folder_split = f'output/{model_name}/test_split_{i}'
-    #
-    #     shutil.rmtree(output_folder_split, ignore_errors=True)
-    #
-    #     trainer = t.train(train_formatted, f'{model_name}_split_{i}',
-    #                       batch_size=2, num_train_epochs=2,
-    #                       output_model_folder=output_folder_split)
+    for i, train_formatted in enumerate(train_formatted_list):
+        model_name = model_name.replace('/', '_')
+
+        output_folder_split = f'output/{model_name}/test_split_{i}'
+
+        shutil.rmtree(output_folder_split, ignore_errors=True)
+
+        trainer = t.train(train_formatted, f'{model_name}_split_{i}',
+                          batch_size=2, num_train_epochs=1,
+                          output_model_folder=output_folder_split)
 
     # ----------- train with hyperparameters search ------------
     for i, train_formatted in enumerate(train_formatted_list):
