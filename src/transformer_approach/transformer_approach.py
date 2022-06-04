@@ -206,25 +206,26 @@ if __name__ == '__main__':
 
     # -------------- find best hyperparameters ----------------
     # hold out for finding best hyperparameters otherwise very expensive process
-    # [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
-    #                                                                                           mode='only_phrase')
-    # best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
+    [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
+                                                                                              mode='only_phrase')
+    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
 
     # --------- build splitted stratify kfold dataset ---------
     train_formatted_list = CustomTrainValKF(train_path, cut=100, n_splits=2).preprocess(t.tokenizer,
                                                                                         mode='only_phrase')
 
     # -------------------- standard train ---------------------
-    for i, train_formatted in enumerate(train_formatted_list):
-        model_name = model_name.replace('/', '_')
-
-        output_folder_split = f'output/{model_name}/test_split_{i}'
-
-        shutil.rmtree(output_folder_split, ignore_errors=True)
-
-        trainer = t.train(train_formatted, f'{model_name}_split_{i}',
-                          batch_size=2, num_train_epochs=1,
-                          output_model_folder=output_folder_split)
+    # for i, train_formatted in enumerate(train_formatted_list):
+    #     model_name = model_name.replace('/', '_')
+    #
+    #     output_folder_split = f'output/{model_name}/test_split_{i}'
+    #
+    #     shutil.rmtree(output_folder_split, ignore_errors=True)
+    #
+    #     trainer = t.train(train_formatted, f'{model_name}_split_{i}',
+    #                       batch_size=2, num_train_epochs=1,
+    #                       output_model_folder=output_folder_split,
+    #                       report_to="wandb")
 
     # ----------- train with hyperparameters search ------------
     for i, train_formatted in enumerate(train_formatted_list):
@@ -238,7 +239,8 @@ if __name__ == '__main__':
         trainer = t.train(train_formatted,
                           name_wandb=f'{model_name}_split_{i}_best',
                           best_trial=best_trial,
-                          output_model_folder=output_model_split)
+                          output_model_folder=output_model_split,
+                          report_to="wandb")
 
     # ----------------- build submission csv -------------------
     # test_formatted = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
