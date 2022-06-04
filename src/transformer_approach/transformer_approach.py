@@ -30,17 +30,17 @@ class TransformersApproach:
     def __init__(self, model_name: str):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model_name = model_name
-        self.model = self.model_init().to(device)
+        self.model = self.model_init()
 
     def model_init(self):
         model = AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=5,
                                                                    ignore_mismatched_sizes=True)
 
-        if self.tokenizer.pad_token is None:
+        if model.config.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             model.config.pad_token_id = self.tokenizer.pad_token_id
 
-        return model
+        return model.to(device)
 
     def _prepare_trainer(self, dataset_formatted, batch_size: int = 16, num_train_epochs: int = 5,
                          output_model_folder: str = 'output/test_trainer', report_to: str = "none"):
