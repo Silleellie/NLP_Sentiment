@@ -187,7 +187,7 @@ class TransformersApproach:
         final_pred = list(itertools.chain.from_iterable([compute_batch_prediction(batch)
                                                          for batch in tqdm(dataloader)]))
 
-        final_dict = {'PhraseId': list(dataset_formatted['test']), 'Sentiment': final_pred}
+        final_dict = {'PhraseId': list(dataset_formatted['test']['PhraseId']), 'Sentiment': final_pred}
         final_df = pd.DataFrame(final_dict)
         final_df.to_csv(output_file, index=False)
 
