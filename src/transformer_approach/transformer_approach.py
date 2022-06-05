@@ -171,31 +171,27 @@ class TransformersApproach:
         return best_trial
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
-        def compute_batch_prediction(single_item):
-            if single_item.get('token_type_ids') is not None:
-                ids = single_item['input_ids'].to(device)
-                token_type_ids = single_item['token_type_ids'].to(device)
-                mask = single_item['attention_mask'].to(device)
+        def compute_batch_prediction(batch_items):
+            input_model_device = {k: v.to(device) for k, v in batch_items.items()}
 
-                with torch.no_grad():
-                    logits = self.model(input_ids=ids, token_type_ids=token_type_ids, attention_mask=mask)
-            else:
-                ids = single_item['input_ids'].to(device)
-                mask = single_item['attention_mask'].to(device)
-
-                with torch.no_grad():
-                    logits = self.model(input_ids=ids, attention_mask=mask)
+            with torch.no_grad():
+                logits = self.model(**input_model_device)
             
             prediction = torch.argmax(logits.logits, dim=-1).to('cpu')
 
             return [pred.item() for pred in prediction]
 
+        phrase_ids = list(dataset_formatted['test']['PhraseId'])
+
+        dataset_formatted['test'] = dataset_formatted['test'].remove_columns('PhraseId')
+
         dataloader = DataLoader(dataset_formatted['test'], collate_fn=DataCollatorWithPadding(tokenizer=self.tokenizer),
                                 num_workers=2, batch_size=8)
+
         final_pred = list(itertools.chain.from_iterable([compute_batch_prediction(batch)
                                                          for batch in tqdm(dataloader)]))
 
-        final_dict = {'PhraseId': list(dataset_formatted['test']['PhraseId']), 'Sentiment': final_pred}
+        final_dict = {'PhraseId': phrase_ids, 'Sentiment': final_pred}
         final_df = pd.DataFrame(final_dict)
         final_df.to_csv(output_file, index=False)
 
@@ -206,7 +202,7 @@ if __name__ == '__main__':
     train_path = '../../dataset/train.tsv'
     test_path = '../../dataset/test.tsv'
 
-    model_name = 'checkpoint-23409'
+    model_name = 'checkpoint-15606'
 
     accuracy_metric = load_metric("accuracy")
 
@@ -251,6 +247,7 @@ if __name__ == '__main__':
     #                       report_to="wandb")
 
     # ----------------- build submission csv -------------------
-    [test_formatted] = CustomTest(test_path, cut=1000).preprocess(t.tokenizer, mode='only_phrase')
+    [test_formatted] = CustomTest(test_path).preprocess(t.tokenizer, mode='only_phrase')
 
-    t.compute_prediction(test_formatted, output_file='submission.csv')
+    df = t.compute_prediction(test_formatted, output_file='submission.csv')['Sentiment']
+
