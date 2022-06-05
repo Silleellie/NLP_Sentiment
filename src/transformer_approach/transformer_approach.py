@@ -172,12 +172,20 @@ class TransformersApproach:
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
         def compute_batch_prediction(single_item):
-            ids = single_item['input_ids'].to(device)
-            token_type_ids = single_item['token_type_ids'].to(device)
-            mask = single_item['attention_mask'].to(device)
+            if single_item.get('token_type_ids') is not None:
+                ids = single_item['input_ids'].to(device)
+                token_type_ids = single_item['token_type_ids'].to(device)
+                mask = single_item['attention_mask'].to(device)
 
-            with torch.no_grad():
-                logits = self.model(input_ids=ids, token_type_ids=token_type_ids, attention_mask=mask)
+                with torch.no_grad():
+                    logits = self.model(input_ids=ids, token_type_ids=token_type_ids, attention_mask=mask)
+            else:
+                ids = single_item['input_ids'].to(device)
+                mask = single_item['attention_mask'].to(device)
+
+                with torch.no_grad():
+                    logits = self.model(input_ids=ids, attention_mask=mask)
+            
             prediction = torch.argmax(logits.logits, dim=-1).to('cpu')
 
             return [pred.item() for pred in prediction]
