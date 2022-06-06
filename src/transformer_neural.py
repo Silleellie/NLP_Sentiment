@@ -45,8 +45,9 @@ class CustomHead(nn.Module):
         self.bn3 = nn.BatchNorm2d(84)
         self.conv4 = nn.Conv2d(84, 168, kernel_size=3, stride=2, padding=1)
         self.bn4 = nn.BatchNorm2d(168)
-        self.linear1 = nn.Linear(168 * 1 * 48, 4032)
-        self.linear2 = nn.Linear(4032, num_labels)
+        self.conv5 = nn.Conv2d(168, 336, kernel_size=3, stride=2, padding=1)
+        self.bn5 = nn.BatchNorm2d(336)
+        self.linear1 = nn.Linear(336 * 1 * 24, num_labels)
 
     def forward(self, input):
         intermediate = self.conv1(input)
@@ -64,12 +65,14 @@ class CustomHead(nn.Module):
         intermediate = self.leaky_relu(intermediate)
         intermediate = self.bn4(intermediate)
 
+        intermediate = self.conv5(intermediate)
+        intermediate = self.leaky_relu(intermediate)
+        intermediate = self.bn5(intermediate)
+
+        intermediate = self.dropout(intermediate)
         intermediate = self.flatten(intermediate)
 
-        intermediate = self.linear1(intermediate)
-        intermediate = self.dropout(intermediate)
-
-        output = self.linear2(intermediate)
+        output = self.linear1(intermediate)
 
         return output
 
