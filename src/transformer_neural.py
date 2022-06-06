@@ -174,7 +174,7 @@ class CustomModel(nn.Module):
 
             if eval_accuracy > best_eval_accuracy:
                 torch.save(self, 'best_model.pth')
-            print(**{'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
+            print({'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
 
 
 def tokenize_fn(tokenizer, batch_item_dataset):
