@@ -1,23 +1,17 @@
 import itertools
-import os.path
-import random
-from copy import deepcopy
 
 import datasets
-import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import accuracy_score
+from flair.data import Sentence
+from flair.models import SequenceTagger
 from sklearn.model_selection import train_test_split
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, BCELoss, CrossEntropyLoss
-from torch.nn.functional import one_hot
+from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import LinearLR, ExponentialLR
-from torch.utils.data import DataLoader, WeightedRandomSampler
-from transformers import AutoModel, AutoConfig, DataCollatorWithPadding, AutoTokenizer, get_scheduler, \
-    AutoModelForSequenceClassification
-from transformers.modeling_outputs import TokenClassifierOutput, SequenceClassifierOutput
+from torch.utils.data import DataLoader
+from transformers import AutoModel, AutoConfig, DataCollatorWithPadding, AutoTokenizer
+from transformers.modeling_outputs import SequenceClassifierOutput
 from tqdm.auto import tqdm
 from datasets import load_metric
 from transformers import get_scheduler
@@ -26,6 +20,7 @@ torch.cuda.empty_cache()
 
 device = 'cuda:0'
 
+tagger = SequenceTagger.load("flair/pos-english-fast")
 
 class CustomHead(nn.Module):
     def __init__(self, num_labels):
@@ -213,6 +208,23 @@ def tokenize_fn(tokenizer, batch_item_dataset):
     return tokenizer(batch_item_dataset["Phrase"])
 
 
+def tokenize_fn_pos(tokenizer, batch_item_dataset):
+    return tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"])
+
+
+def pos_tagger_fn(single_item):
+    # make example sentence
+    sentence = Sentence(single_item["Phrase"])
+
+    # predict NER tags
+    tagger.predict(sentence)
+
+    # print sentence
+    tags = ' '.join(token.tag for token in sentence.tokens)
+
+    return {'Pos': tags}
+
+
 if __name__ == '__main__':
     train = pd.read_csv('../dataset/train.tsv', sep="\t")
     texts = train['Phrase'].to_list()[:100]
@@ -242,9 +254,11 @@ if __name__ == '__main__':
 
     cm = CustomModel('bert-base-uncased', 5)
 
-    tokenized_dataset = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
+    pos_dataset = dataset_dict.map(pos_tagger_fn)
 
-    formatted_dataset = tokenized_dataset.rename_column('Sentiment', 'label').remove_columns('Phrase')
+    tokenized_dataset = pos_dataset.map(lambda batch: tokenize_fn_pos(cm.tokenizer, batch), batched=True)
+
+    formatted_dataset = tokenized_dataset.rename_column('Sentiment', 'label').remove_columns(['Phrase', 'Pos'])
 
     # from list to tensors
     formatted_dataset.set_format("torch")
@@ -274,7 +288,7 @@ if __name__ == '__main__':
 
     cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
 
-    test = pd.read_csv('../dataset/train.tsv', sep="\t")[:100]
+    test = pd.read_csv('../dataset/test.tsv', sep="\t")[:100]
 
     test_dict = {'PhraseId': list(test['PhraseId']), 'Phrase': list(test['Phrase'])}
 
