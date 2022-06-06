@@ -1,3 +1,5 @@
+import os.path
+import random
 from copy import deepcopy
 
 import datasets
@@ -44,7 +46,6 @@ class CustomHead(nn.Module):
         self.linear4 = nn.Linear(84 * 1 * 96, num_labels)
 
     def forward(self, input):
-
         intermediate = self.linear1(input)
         intermediate = self.leaky_relu(intermediate)
         intermediate = self.bn1(intermediate)
@@ -67,11 +68,11 @@ class CustomHead(nn.Module):
 class CustomModel(nn.Module):
     def __init__(self, checkpoint, num_labels):
         super(CustomModel, self).__init__()
+
         self.num_labels = num_labels
 
         # Load Model with given checkpoint and extract its body
         self.model = AutoModel.from_pretrained(checkpoint, config=AutoConfig.from_pretrained(checkpoint,
-                                                                                             output_attentions=True,
                                                                                              output_hidden_states=True))
         self.model.to(device)
 
@@ -79,15 +80,14 @@ class CustomModel(nn.Module):
 
         self.custom_head = CustomHead(num_labels).to(device)
 
+        self.optim = AdamW(self.model.parameters(), lr=5e-5, weight_decay=1e-4)
+
     def forward(self, input_ids=None, token_type_ids=None, attention_mask=None, labels=None):
         # Extract outputs from the body
         outputs = self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
         sentenced = torch.stack([torch.mean(tensor, dim=1) for tensor in outputs.hidden_states])
         sentenced = torch.permute(sentenced, (1, 0, 2)).unsqueeze(dim=2)
-
-        # sentenced = torch.stack(outputs.hidden_states)
-        # sentenced = torch.permute(sentenced, (1, 0, 2, 3))
 
         logits = self.custom_head(sentenced)
 
@@ -99,15 +99,7 @@ class CustomModel(nn.Module):
         return SequenceClassifierOutput(loss=loss, logits=logits, hidden_states=outputs.hidden_states,
                                         attentions=outputs.attentions)
 
-
-class Trainer:
-
-    def __init__(self):
-        self.model = CustomModel('bert-base-uncased', 5)
-
-        self.optim = AdamW(self.model.parameters(), lr=5e-5, weight_decay=1e-4)
-
-    def trainer(self, n_epochs, train_dataloader, validation_dataloader):
+    def trainer(self, n_epochs, train_dataloader, validation_dataloader, eval_dataloader):
 
         metric = load_metric("accuracy")
 
@@ -119,17 +111,32 @@ class Trainer:
 
         for epoch in range(n_epochs):
             loss = 0
-            self.model.train()
+            loss_acc = 0
+            self.train()
             for batch in tqdm(train_dataloader):
                 self.optim.zero_grad()
 
                 batch = {k: v.to(device) for k, v in batch.items()}
-                outputs = self.model(**batch)
+                outputs = self(**batch)
                 loss = outputs.loss
                 loss.backward()
 
-                predictions = torch.argmax(outputs.logits, dim=-1)
-                loss_acc = -metric.compute(predictions=predictions, references=batch['labels'])['accuracy']
+                for batch_val in validation_dataloader:
+
+                    # since random shuffle this will be always different
+                    batch_val = {k: v.to(device) for k, v in batch_val.items()}
+
+                    with torch.no_grad():
+                        output_val = self(**batch_val)
+
+                    predictions = torch.argmax(output_val.logits, dim=-1)
+                    metric.add_batch(predictions=predictions, references=batch_val['labels'])
+
+                    # only one batch
+                    break
+
+                loss_acc = -metric.compute()['accuracy']
+
                 loss_acc = torch.tensor(loss_acc, requires_grad=True).to(device)
 
                 loss_acc.backward()
@@ -137,11 +144,11 @@ class Trainer:
                 self.optim.step()
                 lr_scheduler.step()
 
-            self.model.eval()
-            for batch in tqdm(validation_dataloader):
+            self.eval()
+            for batch in tqdm(eval_dataloader):
                 batch = {k: v.to(device) for k, v in batch.items()}
                 with torch.no_grad():
-                    outputs = self.model(**batch)
+                    outputs = self(**batch)
 
                 logits = outputs.logits
                 predictions = torch.argmax(logits, dim=-1)
@@ -159,29 +166,38 @@ if __name__ == '__main__':
     texts = train['Phrase'].to_list()[:10000]
     labels = train['Sentiment'].to_list()[:10000]
 
-    train_texts, validation_texts, train_labels, validation_labels = train_test_split(texts, labels,
-                                                                                      train_size=0.8,
-                                                                                      stratify=labels)
+    train_texts, eval_texts, train_labels, eval_labels = train_test_split(texts, labels,
+                                                                          train_size=0.8,
+                                                                          stratify=labels,
+                                                                          shuffle=True)
+
+    train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels,
+                                                                        train_size=0.9,
+                                                                        stratify=train_labels,
+                                                                        shuffle=True)
 
     train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-    validation_dict = {'Phrase': validation_texts, 'Sentiment': validation_labels}
+    validation_dict = {'Phrase': val_texts, 'Sentiment': val_labels}
+    eval_dict = {'Phrase': eval_texts, 'Sentiment': eval_labels}
 
     train_dataset = datasets.Dataset.from_dict(train_dict)
     validation_dataset = datasets.Dataset.from_dict(validation_dict)
+    eval_dataset = datasets.Dataset.from_dict(eval_dict)
 
     dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                         "validation": validation_dataset})
+                                         "validation": validation_dataset,
+                                         "eval": eval_dataset})
 
-    cm = Trainer()
+    cm = CustomModel('bert-base-uncased', 5)
 
-    tokenized_dataset = dataset_dict.map(lambda batch: tokenize_fn(cm.model.tokenizer, batch), batched=True)
+    tokenized_dataset = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
 
     formatted_dataset = tokenized_dataset.rename_column('Sentiment', 'label').remove_columns('Phrase')
 
     # from list to tensors
     formatted_dataset.set_format("torch")
 
-    data_collator = DataCollatorWithPadding(tokenizer=cm.model.tokenizer)
+    data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
 
     # class_sample_count = np.array(
     #     [len(np.where(formatted_dataset['train']['label'] == t)[0]) for t in np.unique(formatted_dataset['train']['label'])])
@@ -193,11 +209,17 @@ if __name__ == '__main__':
     # sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
 
     train_dataloader = DataLoader(
-        formatted_dataset["train"], batch_size=8, collate_fn=data_collator
+        formatted_dataset["train"], batch_size=16, collate_fn=data_collator, shuffle=True
     )
 
     validation_dataloader = DataLoader(
-        formatted_dataset["validation"], batch_size=8, collate_fn=data_collator
+        formatted_dataset["validation"], batch_size=16, collate_fn=data_collator, shuffle=True
     )
 
-    cm.trainer(3, train_dataloader, validation_dataloader)
+    eval_dataloader = DataLoader(
+        formatted_dataset["eval"], batch_size=16, collate_fn=data_collator
+    )
+
+    cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
+
+    print("we")
