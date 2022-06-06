@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import datasets
+import numpy as np
 import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score
@@ -10,7 +11,7 @@ from torch.nn import BCEWithLogitsLoss, BCELoss, CrossEntropyLoss
 from torch.nn.functional import one_hot
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LinearLR, ExponentialLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from transformers import AutoModel, AutoConfig, DataCollatorWithPadding, AutoTokenizer, get_scheduler, \
     AutoModelForSequenceClassification
 from transformers.modeling_outputs import TokenClassifierOutput, SequenceClassifierOutput
@@ -155,8 +156,8 @@ def tokenize_fn(tokenizer, batch_item_dataset):
 
 if __name__ == '__main__':
     train = pd.read_csv('../dataset/train.tsv', sep="\t")
-    texts = train['Phrase'].to_list()[:5000]
-    labels = train['Sentiment'].to_list()[:5000]
+    texts = train['Phrase'].to_list()[:10000]
+    labels = train['Sentiment'].to_list()[:10000]
 
     train_texts, validation_texts, train_labels, validation_labels = train_test_split(texts, labels,
                                                                                       train_size=0.8,
@@ -181,6 +182,15 @@ if __name__ == '__main__':
     formatted_dataset.set_format("torch")
 
     data_collator = DataCollatorWithPadding(tokenizer=cm.model.tokenizer)
+
+    # class_sample_count = np.array(
+    #     [len(np.where(formatted_dataset['train']['label'] == t)[0]) for t in np.unique(formatted_dataset['train']['label'])])
+    # weight = 1. / class_sample_count
+    # samples_weight = np.array([weight[t] for t in formatted_dataset['train']['label']])
+    #
+    # samples_weight = torch.from_numpy(samples_weight)
+    # samples_weight = samples_weight.double()
+    # sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
 
     train_dataloader = DataLoader(
         formatted_dataset["train"], batch_size=8, collate_fn=data_collator
