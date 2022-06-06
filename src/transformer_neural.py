@@ -34,16 +34,16 @@ class CustomHead(nn.Module):
 
         self.flatten = nn.Flatten()
 
-        self.conv1 = nn.Conv2d(13, 26, kernel_size=3, stride=2, padding=1)
-        self.conv2 = nn.Conv2d(26, 42, kernel_size=3, stride=2, padding=1)
-        self.bn2 = nn.BatchNorm2d(42)
-        self.conv3 = nn.Conv2d(42, 84, kernel_size=3, stride=2, padding=1)
-        self.bn3 = nn.BatchNorm2d(84)
-        self.conv4 = nn.Conv2d(84, 168, kernel_size=3, stride=2, padding=1)
-        self.bn4 = nn.BatchNorm2d(168)
-        self.conv5 = nn.Conv2d(168, 336, kernel_size=3, stride=2, padding=1)
-        self.bn5 = nn.BatchNorm2d(336)
-        self.linear1 = nn.Linear(336 * 1 * 24, num_labels)
+        self.conv1 = nn.Conv2d(13, 13, kernel_size=3, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(13, 13, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(13)
+        self.conv3 = nn.Conv2d(13, 13, kernel_size=3, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(13)
+        self.conv4 = nn.Conv2d(13, 13, kernel_size=3, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(13)
+        self.conv5 = nn.Conv2d(13, 13, kernel_size=3, stride=2, padding=1)
+        self.bn5 = nn.BatchNorm2d(13)
+        self.linear1 = nn.Linear(13 * 1 * 24, num_labels)
 
     def forward(self, input):
         intermediate = self.conv1(input)
@@ -288,18 +288,18 @@ if __name__ == '__main__':
 
     cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
 
-    test = pd.read_csv('../dataset/test.tsv', sep="\t")[:100]
-
-    test_dict = {'PhraseId': list(test['PhraseId']), 'Phrase': list(test['Phrase'])}
-
-    test_dataset = datasets.Dataset.from_dict(test_dict)
-
-    dataset_dict = datasets.DatasetDict({"test": test_dataset})
-
-    dataset_tokenized = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
-
-    dataset_formatted = dataset_tokenized.remove_columns('Phrase')
-
-    cm.compute_prediction(dataset_formatted)
+    # test = pd.read_csv('../dataset/test.tsv', sep="\t")[:100]
+    #
+    # test_dict = {'PhraseId': list(test['PhraseId']), 'Phrase': list(test['Phrase'])}
+    #
+    # test_dataset = datasets.Dataset.from_dict(test_dict)
+    #
+    # dataset_dict = datasets.DatasetDict({"test": test_dataset})
+    #
+    # dataset_tokenized = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
+    #
+    # dataset_formatted = dataset_tokenized.remove_columns('Phrase')
+    #
+    # cm.compute_prediction(dataset_formatted)
 
     print("we")
