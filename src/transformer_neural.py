@@ -117,8 +117,8 @@ class Trainer:
         )
 
         for epoch in range(n_epochs):
-            self.model.train()
             loss = 0
+            self.model.train()
             for batch in tqdm(train_dataloader):
                 self.optim.zero_grad()
 
@@ -126,6 +126,12 @@ class Trainer:
                 outputs = self.model(**batch)
                 loss = outputs.loss
                 loss.backward()
+
+                predictions = torch.argmax(outputs.logits, dim=-1)
+                loss_acc = -metric.compute(predictions=predictions, references=batch['labels'])['accuracy']
+                loss_acc = torch.tensor(loss_acc, requires_grad=True).to(device)
+
+                loss_acc.backward()
 
                 self.optim.step()
                 lr_scheduler.step()
@@ -140,7 +146,7 @@ class Trainer:
                 predictions = torch.argmax(logits, dim=-1)
                 metric.add_batch(predictions=predictions, references=batch['labels'])
 
-            print({**metric.compute(), **{'loss': loss}})
+            print({**metric.compute(), **{'loss_acc': loss_acc, 'loss': loss}})
 
 
 def tokenize_fn(tokenizer, batch_item_dataset):
