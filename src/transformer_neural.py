@@ -1,3 +1,4 @@
+import itertools
 import os.path
 import random
 from copy import deepcopy
@@ -179,6 +180,34 @@ class CustomModel(nn.Module):
                 torch.save(self, 'best_model.pth')
             print({'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
 
+    def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
+        def compute_batch_prediction(batch_items):
+            input_model_device = {k: v.to(device) for k, v in batch_items.items()}
+
+            with torch.no_grad():
+                logits = self(**input_model_device)
+
+            prediction = torch.argmax(logits.logits, dim=-1).to('cpu')
+
+            return [pred.item() for pred in prediction]
+
+        phrase_ids = list(dataset_formatted['test']['PhraseId'])
+
+        dataset_formatted['test'] = dataset_formatted['test'].remove_columns('PhraseId')
+
+        dataloader = DataLoader(dataset_formatted['test'],
+                                collate_fn=DataCollatorWithPadding(tokenizer=self.tokenizer),
+                                num_workers=2, batch_size=8)
+
+        final_pred = list(itertools.chain.from_iterable([compute_batch_prediction(batch)
+                                                         for batch in tqdm(dataloader)]))
+
+        final_dict = {'PhraseId': phrase_ids, 'Sentiment': final_pred}
+        final_df = pd.DataFrame(final_dict)
+        final_df.to_csv(output_file, index=False)
+
+        return final_df
+
 
 def tokenize_fn(tokenizer, batch_item_dataset):
     return tokenizer(batch_item_dataset["Phrase"])
@@ -186,8 +215,8 @@ def tokenize_fn(tokenizer, batch_item_dataset):
 
 if __name__ == '__main__':
     train = pd.read_csv('../dataset/train.tsv', sep="\t")
-    texts = train['Phrase'].to_list()[:10000]
-    labels = train['Sentiment'].to_list()[:10000]
+    texts = train['Phrase'].to_list()[:100]
+    labels = train['Sentiment'].to_list()[:100]
 
     train_texts, eval_texts, train_labels, eval_labels = train_test_split(texts, labels,
                                                                           train_size=0.8,
@@ -244,5 +273,19 @@ if __name__ == '__main__':
     )
 
     cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
+
+    test = pd.read_csv('../dataset/train.tsv', sep="\t")[:100]
+
+    test_dict = {'PhraseId': list(test['PhraseId']), 'Phrase': list(test['Phrase'])}
+
+    test_dataset = datasets.Dataset.from_dict(test_dict)
+
+    dataset_dict = datasets.DatasetDict({"test": test_dataset})
+
+    dataset_tokenized = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
+
+    dataset_formatted = dataset_tokenized.remove_columns('Phrase')
+
+    cm.compute_prediction(dataset_formatted)
 
     print("we")
