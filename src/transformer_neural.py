@@ -38,35 +38,38 @@ class CustomHead(nn.Module):
 
         self.flatten = nn.Flatten()
 
-        self.linear1 = nn.Conv2d(13, 26, kernel_size=3, stride=2, padding=1)
-        self.bn1 = nn.BatchNorm2d(26)
-        self.linear2 = nn.Conv2d(26, 42, kernel_size=3, stride=2, padding=1)
+        self.conv1 = nn.Conv2d(13, 26, kernel_size=3, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(26, 42, kernel_size=3, stride=2, padding=1)
         self.bn2 = nn.BatchNorm2d(42)
-        self.linear3 = nn.Conv2d(42, 84, kernel_size=3, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(42, 84, kernel_size=3, stride=2, padding=1)
         self.bn3 = nn.BatchNorm2d(84)
-        self.linear4 = nn.Conv2d(84, 168, kernel_size=3, stride=2, padding=1)
-        self.linear5 = nn.Linear(168 * 1 * 48, num_labels)
+        self.conv4 = nn.Conv2d(84, 168, kernel_size=3, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(168)
+        self.linear1 = nn.Linear(168, 84)
+        self.linear2 = nn.Linear(84, num_labels)
 
     def forward(self, input):
-        intermediate = self.linear1(input)
+        intermediate = self.conv1(input)
         intermediate = self.leaky_relu(intermediate)
-        intermediate = self.bn1(intermediate)
 
-        intermediate = self.linear2(intermediate)
+        intermediate = self.conv2(intermediate)
         intermediate = self.leaky_relu(intermediate)
         intermediate = self.bn2(intermediate)
 
-        intermediate = self.linear3(intermediate)
+        intermediate = self.conv3(intermediate)
         intermediate = self.leaky_relu(intermediate)
         intermediate = self.bn3(intermediate)
 
-        intermediate = self.linear4(intermediate)
+        intermediate = self.conv4(intermediate)
         intermediate = self.leaky_relu(intermediate)
+        intermediate = self.bn4(intermediate)
+
+        intermediate = self.linear1(intermediate)
         intermediate = self.dropout(intermediate)
 
         intermediate = self.flatten(intermediate)
 
-        output = self.linear5(intermediate)
+        output = self.linear2(intermediate)
 
         return output
 
@@ -114,6 +117,8 @@ class CustomModel(nn.Module):
         lr_scheduler = get_scheduler(
             name="linear", optimizer=self.optim, num_warmup_steps=0, num_training_steps=num_training_steps
         )
+
+        best_eval_accuracy = 0
 
         for epoch in range(n_epochs):
             loss = 0
@@ -165,7 +170,11 @@ class CustomModel(nn.Module):
             
 
             mean_loss_acc = mean_loss_acc / len(train_dataloader)
-            print({**metric.compute(), **{'loss_acc': mean_loss_acc, 'loss': loss.item()}})
+            eval_accuracy = metric.compute()
+
+            if eval_accuracy > best_eval_accuracy:
+                torch.save(self, 'best_model.pth')
+            print({**eval_accuracy, **{'loss_acc': mean_loss_acc, 'loss': loss.item()}})
 
 
 def tokenize_fn(tokenizer, batch_item_dataset):
