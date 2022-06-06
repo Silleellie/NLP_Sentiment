@@ -170,11 +170,11 @@ class CustomModel(nn.Module):
             
 
             mean_loss_acc = mean_loss_acc / len(train_dataloader)
-            eval_accuracy = metric.compute()
+            eval_accuracy = metric.compute()['accuracy']
 
             if eval_accuracy > best_eval_accuracy:
                 torch.save(self, 'best_model.pth')
-            print({**eval_accuracy, **{'loss_acc': mean_loss_acc, 'loss': loss.item()}})
+            print(**{'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
 
 
 def tokenize_fn(tokenizer, batch_item_dataset):
@@ -229,15 +229,15 @@ if __name__ == '__main__':
     # sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
 
     train_dataloader = DataLoader(
-        formatted_dataset["train"], batch_size=16, collate_fn=data_collator, shuffle=True
+        formatted_dataset["train"], batch_size=1, collate_fn=data_collator, shuffle=True
     )
 
     validation_dataloader = DataLoader(
-        formatted_dataset["validation"], batch_size=16, collate_fn=data_collator, shuffle=True
+        formatted_dataset["validation"], batch_size=1, collate_fn=data_collator, shuffle=True
     )
 
     eval_dataloader = DataLoader(
-        formatted_dataset["eval"], batch_size=16, collate_fn=data_collator
+        formatted_dataset["eval"], batch_size=1, collate_fn=data_collator
     )
 
     cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
