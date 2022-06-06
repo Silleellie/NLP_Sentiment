@@ -32,7 +32,7 @@ class CustomHead(nn.Module):
 
         self.num_labels = num_labels
 
-        self.leaky_relu = nn.ReLU()
+        self.leaky_relu = nn.LeakyReLU(0.2)
 
         self.dropout = nn.Dropout(0.5)
 
@@ -43,7 +43,9 @@ class CustomHead(nn.Module):
         self.linear2 = nn.Conv2d(26, 42, kernel_size=3, stride=2, padding=1)
         self.bn2 = nn.BatchNorm2d(42)
         self.linear3 = nn.Conv2d(42, 84, kernel_size=3, stride=2, padding=1)
-        self.linear4 = nn.Linear(84 * 1 * 96, num_labels)
+        self.bn3 = nn.BatchNorm2d(84)
+        self.linear4 = nn.Conv2d(84, 168, kernel_size=3, stride=2, padding=1)
+        self.linear5 = nn.Linear(168 * 1 * 48, num_labels)
 
     def forward(self, input):
         intermediate = self.linear1(input)
@@ -56,11 +58,15 @@ class CustomHead(nn.Module):
 
         intermediate = self.linear3(intermediate)
         intermediate = self.leaky_relu(intermediate)
+        intermediate = self.bn3(intermediate)
+
+        intermediate = self.linear4(intermediate)
+        intermediate = self.leaky_relu(intermediate)
         intermediate = self.dropout(intermediate)
 
         intermediate = self.flatten(intermediate)
 
-        output = self.linear4(intermediate)
+        output = self.linear5(intermediate)
 
         return output
 
@@ -113,6 +119,7 @@ class CustomModel(nn.Module):
             loss = 0
             loss_acc = 0
             self.train()
+            mean_loss_acc = 0
             for batch in tqdm(train_dataloader):
                 self.optim.zero_grad()
 
@@ -137,6 +144,8 @@ class CustomModel(nn.Module):
 
                 loss_acc = -metric.compute()['accuracy']
 
+                mean_loss_acc += loss_acc
+
                 loss_acc = torch.tensor(loss_acc, requires_grad=True).to(device)
 
                 loss_acc.backward()
@@ -153,8 +162,10 @@ class CustomModel(nn.Module):
                 logits = outputs.logits
                 predictions = torch.argmax(logits, dim=-1)
                 metric.add_batch(predictions=predictions, references=batch['labels'])
+            
 
-            print({**metric.compute(), **{'loss_acc': loss_acc, 'loss': loss}})
+            mean_loss_acc = mean_loss_acc / len(train_dataloader)
+            print({**metric.compute(), **{'loss_acc': mean_loss_acc, 'loss': loss.item()}})
 
 
 def tokenize_fn(tokenizer, batch_item_dataset):
