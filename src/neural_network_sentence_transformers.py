@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from transformer_neural import CustomHead
+from src.transformer_neural import CustomHead
 
 from tqdm import tqdm
 
