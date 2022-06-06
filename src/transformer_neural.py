@@ -27,27 +27,39 @@ class CustomHead(nn.Module):
     def __init__(self, num_labels):
         super(CustomHead, self).__init__()
 
+        self.num_labels = num_labels
+
         self.leaky_relu = nn.ReLU()
 
         self.dropout = nn.Dropout(0.1)
 
-        self.linear1 = nn.Linear(768, 334)
-        self.linear2 = nn.Linear(334, 167)
-        self.linear3 = nn.Linear(167, num_labels)
+        self.flatten = nn.Flatten()
+
+        self.linear1 = nn.Conv2d(13, 26, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(26)
+        self.linear2 = nn.Conv2d(26, 42, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(42)
+        self.linear3 = nn.Conv2d(42, 84, kernel_size=3, stride=2, padding=1)
+        self.linear4 = nn.Linear(84 * 1 * 96, num_labels)
 
     def forward(self, input):
         # Add custom layers
         sequence_output = self.dropout(input)
 
         intermediate = self.linear1(sequence_output)
-        intermediate = self.leaky_relu(intermediate.unsqueeze(dim=2))
-        intermediate = self.dropout(intermediate)
+        intermediate = self.leaky_relu(intermediate)
+        intermediate = self.bn1(intermediate)
 
-        intermediate = self.linear2(intermediate.squeeze())
-        intermediate = self.leaky_relu(intermediate.unsqueeze(dim=2))
-        intermediate = self.dropout(intermediate)
+        intermediate = self.linear2(intermediate)
+        intermediate = self.leaky_relu(intermediate)
+        intermediate = self.bn2(intermediate)
 
-        output = self.linear3(intermediate.squeeze())
+        intermediate = self.linear3(intermediate)
+        intermediate = self.leaky_relu(intermediate)
+
+        intermediate = self.flatten(intermediate)
+
+        output = self.linear4(intermediate)
 
         return output
 
@@ -71,7 +83,13 @@ class CustomModel(nn.Module):
         # Extract outputs from the body
         outputs = self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
-        logits = self.custom_head(outputs[1])  # calculate losses
+        sentenced = torch.stack([torch.mean(tensor, dim=1) for tensor in outputs.hidden_states])
+        sentenced = torch.permute(sentenced, (1, 0, 2)).unsqueeze(dim=2)
+
+        # sentenced = torch.stack(outputs.hidden_states)
+        # sentenced = torch.permute(sentenced, (1, 0, 2, 3))
+
+        logits = self.custom_head(sentenced)
 
         loss = None
         if labels is not None:
@@ -160,12 +178,11 @@ if __name__ == '__main__':
     data_collator = DataCollatorWithPadding(tokenizer=cm.model.tokenizer)
 
     train_dataloader = DataLoader(
-        formatted_dataset["train"], batch_size=4, collate_fn=data_collator
+        formatted_dataset["train"], batch_size=8, collate_fn=data_collator
     )
 
     validation_dataloader = DataLoader(
-        formatted_dataset["validation"], batch_size=4, collate_fn=data_collator
+        formatted_dataset["validation"], batch_size=8, collate_fn=data_collator
     )
 
     cm.trainer(3, train_dataloader, validation_dataloader)
-    # train_pytorch()
