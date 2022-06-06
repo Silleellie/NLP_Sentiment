@@ -31,7 +31,7 @@ class CustomHead(nn.Module):
 
         self.leaky_relu = nn.ReLU()
 
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.5)
 
         self.flatten = nn.Flatten()
 
@@ -43,10 +43,8 @@ class CustomHead(nn.Module):
         self.linear4 = nn.Linear(84 * 1 * 96, num_labels)
 
     def forward(self, input):
-        # Add custom layers
-        sequence_output = self.dropout(input)
 
-        intermediate = self.linear1(sequence_output)
+        intermediate = self.linear1(input)
         intermediate = self.leaky_relu(intermediate)
         intermediate = self.bn1(intermediate)
 
@@ -56,6 +54,7 @@ class CustomHead(nn.Module):
 
         intermediate = self.linear3(intermediate)
         intermediate = self.leaky_relu(intermediate)
+        intermediate = self.dropout(intermediate)
 
         intermediate = self.flatten(intermediate)
 
