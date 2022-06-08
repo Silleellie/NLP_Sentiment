@@ -18,6 +18,11 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class CustomHead(nn.Module):
+    """
+    Class that replaces the default HEAD provided by Hugging Face for the text classification pipeline.
+
+    Check the slides for details on the architecture
+    """
     def __init__(self, num_labels):
         super(CustomHead, self).__init__()
 
@@ -69,7 +74,15 @@ class CustomHead(nn.Module):
 
 
 class CustomModel(nn.Module):
-    def __init__(self, checkpoint, num_labels):
+    """
+    Class that models the approach with the Custom Neural Network.
+    By passing the model name to the constructor, it will automatically download the related model and its
+    tokenizer.
+    You also need to pass the number of possible labels, that in this project case is 5.
+
+    Check the below main() for usages example
+    """
+    def __init__(self, checkpoint, num_labels=5):
         super(CustomModel, self).__init__()
 
         self.num_labels = num_labels
@@ -212,11 +225,15 @@ if __name__ == '__main__':
 
     cm = CustomModel('bert-base-uncased', num_labels=5)
 
-    # ------------------- hold out splitting --------------------
+    ################################
+    # HoldOut stratified splitting #
+    ################################
     [dataset_dict] = CustomTrainValEvalHO(train_path).preprocess(cm.tokenizer, mode='with_pos')
 
-    # ------- train with custom head for classification ---------
-    data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
+    #############################################
+    # Train with custom head for classification #
+    #############################################
+    data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)  # dynamic padding
 
     train_dataloader = DataLoader(
         dataset_dict["train"], batch_size=8, collate_fn=data_collator, shuffle=True
@@ -235,7 +252,9 @@ if __name__ == '__main__':
                validation_dataloader=validation_dataloader,
                eval_dataloader=eval_dataloader)
 
-    # ----------------- build submission csv -------------------
+    #########################
+    # Build submission file #
+    #########################
     [formatted_dataset] = CustomTest(test_path).preprocess(cm.tokenizer, "with_pos")
 
     cm.compute_prediction(formatted_dataset, output_file='submission.csv')

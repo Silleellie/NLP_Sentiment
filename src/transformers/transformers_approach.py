@@ -20,6 +20,13 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class TransformersApproach:
+    """
+    Class that models the approach with the HuggingFace transformers library.
+    By passing the model name to the constructor, it will automatically download the related model and its
+    tokenizer
+
+    Check the below main() for usages example
+    """
 
     def __init__(self, model_name: str):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -206,19 +213,24 @@ if __name__ == '__main__':
 
     t = TransformersApproach(model_name)
 
-    # Uncomment the part of the code that must be run
+    # ---------- Uncomment the part of the code that must be run ----------
 
-    # -------------- find best hyperparameters ----------------
-    # hold out for finding best hyperparameters otherwise very expensive process
+    #############################
+    # Find best hyperparameters #
+    #############################
     [train_formatted] = CustomTrainValHO(train_path, train_set_size=0.8).preprocess(t.tokenizer,
                                                                                     mode=mode)
     best_trial = t.find_best_hyperparameters(train_formatted, n_trials=5)
 
-    # --------- build splitted stratify kfold dataset ---------
+    ###################################
+    # Build splitted stratified kfold #
+    ###################################
     train_formatted_list = CustomTrainValKF(train_path, n_splits=2).preprocess(t.tokenizer,
-                                                                                        mode=mode)
+                                                                               mode=mode)
 
-    # -------------------- standard train ---------------------
+    #################################################
+    # Standard train with no hyperparameters search #
+    #################################################
     # for i, train_formatted in enumerate(train_formatted_list):
     #     model_name = model_name.replace('/', '_')
     #
@@ -230,7 +242,9 @@ if __name__ == '__main__':
     #                       batch_size=2, num_train_epochs=1,
     #                       output_model_folder=output_folder_split)
 
-    # ----------- train with hyperparameters search ------------
+    #####################################
+    # Train with hyperparameters search #
+    #####################################
     for i, train_formatted in enumerate(train_formatted_list):
         model_name = model_name.replace('/', '_')
 
@@ -243,7 +257,9 @@ if __name__ == '__main__':
                           best_trial=best_trial,
                           output_model_folder=output_model_split)
 
-    # ----------------- build submission csv -------------------
+    #########################
+    # Build submission file #
+    #########################
     [test_formatted] = CustomTest(test_path).preprocess(t.tokenizer, mode=mode)
 
     t.compute_prediction(test_formatted, output_file='submission.csv')

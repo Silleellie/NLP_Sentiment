@@ -19,6 +19,9 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class CustomNetwork(nn.Module):
+    """
+    Class used as final layers for classification for the Sbertnetwork
+    """
     def __init__(self, num_labels):
         super(CustomNetwork, self).__init__()
 
@@ -47,6 +50,9 @@ class CustomNetwork(nn.Module):
 
 
 class CustomEmbeddingDataset(Dataset):
+    """
+    Class used to pass the embeddings to the pytorch dataloader
+    """
     def __init__(self, embeddings, labels):
         self.embeddings = embeddings
         self.labels = labels
@@ -59,7 +65,11 @@ class CustomEmbeddingDataset(Dataset):
 
 
 class SbertNetwork:
+    """
+    Class that models the approach with SBERT using a dense neural network for classification
 
+    Check the below main() for usages example
+    """
     def __init__(self, model_name='all-mpnet-base-v2', device="cuda:0"):
         self.net = CustomNetwork(5).to(device)
         self.model = SentenceTransformer(model_name, device=device)

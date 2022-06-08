@@ -72,7 +72,13 @@ class CustomDataset:
 
 
 class CustomTrainValKF(CustomDataset):
+    """
+    Class that takes care of performing KFold splitting into train and validation set of tsv file referenced by the
+    path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
 
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def __init__(self, tsv_path: str, cut: int = None, n_splits: int = 5):
         self.n_splits = n_splits
 
@@ -119,6 +125,13 @@ class CustomTrainValKF(CustomDataset):
 
 
 class CustomTrainValHO(CustomDataset):
+    """
+    Class that takes care of performing HoldOut splitting into train and validation set of tsv file referenced by the
+    path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
+
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def __init__(self, tsv_path: str, cut: int = None, train_set_size: float = 0.8):
         self.train_set_size = train_set_size
 
@@ -160,6 +173,13 @@ class CustomTrainValHO(CustomDataset):
 
 
 class CustomTrainValEvalHO(CustomTrainValHO):
+    """
+    Class that takes care of performing HoldOut splitting into train, validation and eval set of tsv file referenced by
+    the path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
+
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
         [dataset_dict] = super()._build_dataset(df, cut)
 
@@ -180,7 +200,11 @@ class CustomTrainValEvalHO(CustomTrainValHO):
 
 
 class CustomTest(CustomDataset):
+    """
+    Class that imports the test set and preprocess it.
 
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId'], inplace=True)

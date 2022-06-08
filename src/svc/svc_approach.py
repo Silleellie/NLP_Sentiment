@@ -5,6 +5,11 @@ import spacy
 
 
 class SVCApproach:
+    """
+    Class that models the simplest approach considered
+
+    Check the below main() for usages example
+    """
 
     def __init__(self, model='en_core_web_sm', **args):
         if model not in spacy.cli.info()['pipelines']:
