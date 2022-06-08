@@ -1,0 +1,19 @@
+== Status ==
+Current time: 2022-06-03 17:16:14 (running for 01:05:16.76)
+Memory usage on this node: 20.5/46.9 GiB
+PopulationBasedTraining: 4 checkpoints, 1 perturbs
+Resources requested: 0/16 CPUs, 0/1 GPUs, 0.0/23.2 GiB heap, 0.0/11.6 GiB objects (0.0/1.0 accelerator_type:RTX)
+Result logdir: /workspace/NLP_Sentiment/hyper_search/tune_transformer_pbt
+Number of trials: 8/8 (8 TERMINATED)
++------------------------+------------+-----------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+
+| Trial name             | status     | loc             |   w_decay |          lr |   batch_size |   num_epochs |   seed | lr_scheduler         |   eval_accuracy |   eval_loss |   epoch |
+|------------------------+------------+-----------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------|
+| _objective_c09b1_00000 | TERMINATED | 172.17.0.2:8224 | 0.219598  | 7.00671e-05 |           32 |            2 |     14 | polynomial           |        0.657161 |    0.863915 |       2 |
+| _objective_c09b1_00001 | TERMINATED | 172.17.0.2:8224 | 0.231752  | 9.92017e-05 |            9 |            5 |     19 | cosine               |        0.645466 |    1.56158  |       5 |
+| _objective_c09b1_00002 | TERMINATED | 172.17.0.2:8224 | 0.2166    | 5.30724e-05 |           16 |            3 |      1 | cosine               |        0.652996 |    1.02501  |       3 |
+| _objective_c09b1_00003 | TERMINATED | 172.17.0.2:8224 | 0.0912727 | 7.37622e-05 |           32 |            2 |     32 | cosine_with_restarts |        0.663089 |    0.843334 |       2 |
+| _objective_c09b1_00004 | TERMINATED | 172.17.0.2:8224 | 0.183556  | 9.30253e-05 |            4 |            2 |     26 | cosine_with_restarts |        0.508491 |    1.2878   |       2 |
+| _objective_c09b1_00005 | TERMINATED | 172.17.0.2:8224 | 0.136821  | 6.07412e-05 |           32 |            5 |     14 | polynomial           |        0.643384 |    1.70902  |       5 |
+| _objective_c09b1_00006 | TERMINATED | 172.17.0.2:8224 | 0.257982  | 6.59846e-05 |           32 |            4 |      2 | linear               |        0.640179 |    1.30393  |       4 |
+| _objective_c09b1_00007 | TERMINATED | 172.17.0.2:8224 | 0.28969   | 5.95801e-05 |            8 |            5 |     24 | linear               |        0.642262 |    1.6769   |       5 |
++------------------------+------------+-----------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+

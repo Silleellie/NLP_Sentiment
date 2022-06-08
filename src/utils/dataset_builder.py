@@ -7,7 +7,6 @@ from flair.data import Sentence
 from flair.models import SequenceTagger
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
-# load tagger as class attribute
 tagger = SequenceTagger.load("flair/pos-english-fast")
 
 
@@ -73,15 +72,19 @@ class CustomDataset:
 
 
 class CustomTrainValKF(CustomDataset):
+    """
+    Class that takes care of performing KFold splitting into train and validation set of tsv file referenced by the
+    path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
 
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def __init__(self, tsv_path: str, cut: int = None, n_splits: int = 5):
         self.n_splits = n_splits
 
         super().__init__(tsv_path, cut)
 
-
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
-
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId', 'Sentiment'], inplace=True)
         all_original_sentences.rename(columns={'Phrase': 'OriginalSentence'}, inplace=True)
@@ -122,11 +125,17 @@ class CustomTrainValKF(CustomDataset):
 
 
 class CustomTrainValHO(CustomDataset):
+    """
+    Class that takes care of performing HoldOut splitting into train and validation set of tsv file referenced by the
+    path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
+
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def __init__(self, tsv_path: str, cut: int = None, train_set_size: float = 0.8):
         self.train_set_size = train_set_size
 
         super().__init__(tsv_path, cut)
-
 
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
@@ -163,8 +172,39 @@ class CustomTrainValHO(CustomDataset):
         return dataset_formatted
 
 
-class CustomTest(CustomDataset):
+class CustomTrainValEvalHO(CustomTrainValHO):
+    """
+    Class that takes care of performing HoldOut splitting into train, validation and eval set of tsv file referenced by
+    the path passed to the constructor
+    The 'cut' parameter cuts the original data for easier testing
 
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
+    def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
+        [dataset_dict] = super()._build_dataset(df, cut)
+
+        train_dict, val_dict = train_test_split(dataset_dict['train'],
+                                                train_size=0.9,
+                                                stratify=dataset_dict['train']['Sentiment'],
+                                                shuffle=True)
+
+        train_dataset = datasets.Dataset.from_dict(train_dict)
+        validation_dataset = datasets.Dataset.from_dict(val_dict)
+
+        # old validation set is the eval set
+        dataset_dict = datasets.DatasetDict({"train": train_dataset,
+                                             "validation": validation_dataset,
+                                             "eval": dataset_dict["validation"]})
+
+        return [dataset_dict]
+
+
+class CustomTest(CustomDataset):
+    """
+    Class that imports the test set and preprocess it.
+
+    You can preprocess the splitted dataset via preprocess() method (Check the slides for info)
+    """
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId'], inplace=True)

@@ -13,3 +13,4 @@ redis~=4.3.1
 ray[tune]
 spacy~=3.3.0
 wandb~=0.12.17
+gdown~=4.4.0

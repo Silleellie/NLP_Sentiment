@@ -1,0 +1,19 @@
+== Status ==
+Current time: 2022-06-03 22:15:48 (running for 01:08:48.01)
+Memory usage on this node: 20.0/46.9 GiB
+PopulationBasedTraining: 15 checkpoints, 7 perturbs
+Resources requested: 0/16 CPUs, 0/1 GPUs, 0.0/23.2 GiB heap, 0.0/11.6 GiB objects (0.0/1.0 accelerator_type:RTX)
+Result logdir: /workspace/NLP_Sentiment/hyper_search/tune_transformer_pbt
+Number of trials: 8/8 (8 TERMINATED)
++------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+
+| Trial name             | status     | loc              |   w_decay |          lr |   batch_size |   num_epochs |   seed | lr_scheduler         |   eval_accuracy |   eval_loss |   epoch |
+|------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------|
+| _objective_1c6ac_00000 | TERMINATED | 172.17.0.2:13838 | 0.0209101 | 4.5353e-05  |           64 |            4 |     26 | polynomial           |        0.652355 |    0.882795 |       4 |
+| _objective_1c6ac_00001 | TERMINATED | 172.17.0.2:13838 | 0.0174251 | 5.66912e-05 |            8 |            4 |     22 | cosine_with_restarts |        0.653476 |    0.898705 |       4 |
+| _objective_1c6ac_00002 | TERMINATED | 172.17.0.2:13838 | 0.0209101 | 4.5353e-05  |            8 |            4 |     17 | cosine_with_restarts |        0.658122 |    0.894548 |       4 |
+| _objective_1c6ac_00003 | TERMINATED | 172.17.0.2:13838 | 0.0139401 | 6.57883e-05 |            6 |            4 |      1 | polynomial           |        0.657321 |    0.888983 |       4 |
+| _objective_1c6ac_00004 | TERMINATED | 172.17.0.2:13838 | 0.0250921 | 5.44235e-05 |           76 |            4 |     31 | cosine               |        0.647869 |    0.887414 |       4 |
+| _objective_1c6ac_00005 | TERMINATED | 172.17.0.2:13838 | 0.0167281 | 6.95002e-05 |           32 |            4 |      6 | polynomial           |        0.654117 |    0.901968 |       4 |
+| _objective_1c6ac_00006 | TERMINATED | 172.17.0.2:13838 | 0.0167281 | 7.8946e-05  |            4 |            4 |      0 | cosine               |        0.658603 |    0.884307 |       4 |
+| _objective_1c6ac_00007 | TERMINATED | 172.17.0.2:13838 | 0.249958  | 5.44235e-05 |            6 |            4 |     20 | linear               |        0.658122 |    0.894548 |       4 |
++------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+

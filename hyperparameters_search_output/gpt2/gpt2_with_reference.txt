@@ -1,0 +1,19 @@
+== Status ==
+Current time: 2022-06-05 13:48:26 (running for 01:28:39.96)
+Memory usage on this node: 18.4/46.9 GiB
+PopulationBasedTraining: 6 checkpoints, 7 perturbs
+Resources requested: 0/16 CPUs, 0/1 GPUs, 0.0/23.48 GiB heap, 0.0/11.74 GiB objects (0.0/1.0 accelerator_type:RTX)
+Result logdir: /workspace/NLP_Sentiment/hyper_search/tune_transformer_pbt
+Number of trials: 8/8 (8 TERMINATED)
++------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+
+| Trial name             | status     | loc              |   w_decay |          lr |   batch_size |   num_epochs |   seed | lr_scheduler         |   eval_accuracy |   eval_loss |   epoch |
+|------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------|
+| _objective_c9fdc_00000 | TERMINATED | 172.17.0.2:30716 | 0.219598  | 7.00671e-05 |           32 |            2 |     14 | polynomial           |        0.656681 |    0.82799  |       2 |
+| _objective_c9fdc_00001 | TERMINATED | 172.17.0.2:30716 | 0.25992   | 4.24579e-05 |           12 |            3 |      1 | linear               |        0.659244 |    0.867613 |       3 |
+| _objective_c9fdc_00002 | TERMINATED | 172.17.0.2:30716 | 0.2166    | 5.30724e-05 |           16 |            3 |      1 | cosine               |        0.660525 |    0.875199 |       3 |
+| _objective_c9fdc_00003 | TERMINATED | 172.17.0.2:30716 | 0.0912727 | 7.37622e-05 |           32 |            2 |     32 | cosine_with_restarts |        0.661967 |    0.831475 |       2 |
+| _objective_c9fdc_00004 | TERMINATED | 172.17.0.2:30716 | 0.183556  | 9.30253e-05 |            4 |            2 |     26 | cosine_with_restarts |        0.664691 |    0.829563 |       2 |
+| _objective_c9fdc_00005 | TERMINATED | 172.17.0.2:30716 | 0.182999  | 7.14962e-05 |           32 |            5 |      6 | cosine               |        0.650112 |    1.21779  |       5 |
+| _objective_c9fdc_00006 | TERMINATED | 172.17.0.2:30716 | 0.347628  | 7.14962e-05 |           16 |            5 |     19 | linear               |        0.646908 |    1.25644  |       5 |
+| _objective_c9fdc_00007 | TERMINATED | 172.17.0.2:30716 | 0.28969   | 5.95801e-05 |            8 |            5 |     24 | linear               |        0.646107 |    1.23432  |       5 |
++------------------------+------------+------------------+-----------+-------------+--------------+--------------+--------+----------------------+-----------------+-------------+---------+
