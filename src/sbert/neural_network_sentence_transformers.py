@@ -15,9 +15,8 @@ Obtained accuracy results validation:
 Custom Neural Network approach with default parameters: 0.6667948225041651
 """
 
-torch.manual_seed(0)
-
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
 
 class CustomNetwork(nn.Module):
     def __init__(self, num_labels):
@@ -61,21 +60,21 @@ class CustomEmbeddingDataset(Dataset):
 
 class SbertNetwork:
 
-    def __init__(self, model_name = 'all-mpnet-base-v2', device = "cuda:0"):
+    def __init__(self, model_name='all-mpnet-base-v2', device="cuda:0"):
         self.net = CustomNetwork(5).to(device)
         self.model = SentenceTransformer(model_name, device=device)
 
-    def train(self, train_texts, train_labels, batch_size = 4,
-              epochs = 5, lr=5e-5, weight_d=1e-4, loss = nn.CrossEntropyLoss()):
-        
+    def train(self, train_texts, train_labels, batch_size=4,
+              epochs=5, lr=5e-5, weight_d=1e-4, loss=nn.CrossEntropyLoss()):
+
         train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
                                                                                           train_size=.8,
                                                                                           stratify=train_labels,
                                                                                           random_state=42)
-        
+
         train_embeddings = self.model.encode(train_texts, convert_to_tensor=True, device=device)
         validation_embeddings = self.model.encode(validation_texts, convert_to_tensor=True, device=device)
-                                                                                    
+
         criterion = loss
         optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=weight_d)
 
@@ -90,11 +89,10 @@ class SbertNetwork:
 
         for epoch in range(epochs):
             print("-------------------------------------------------")
-            print("EPOCH: ", str(epoch+1))
+            print("EPOCH: ", str(epoch + 1))
             running_loss = 0.0
             print("TRAIN")
             for (inputs, labels) in tqdm(train_loader):
-
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -106,14 +104,13 @@ class SbertNetwork:
                 optimizer.step()
 
                 running_loss += loss.item()
-            
+
             print("train loss: ", str(running_loss / len(train_loader)))
 
             print("VALIDATION")
             accuracy = 0
             with torch.no_grad():
                 for (inputs, labels) in tqdm(validation_loader):
-
                     inputs = inputs.to(device)
 
                     outputs = self.net(inputs)
@@ -135,22 +132,22 @@ class SbertNetwork:
         with torch.no_grad():
             outputs = self.net(test_embeddings)
             predictions = torch.argmax(outputs.data, dim=1).cpu()
-        
+
         return predictions
 
     def load_model(self, path='best_network_state.pth'):
         self.net.load_state_dict(torch.load(path))
-    
+
     def create_submission_csv(self, test_ids, predictions):
         final_dict = {'PhraseId': test_ids, 'Sentiment': predictions}
         final_df = pd.DataFrame(final_dict)
         final_df.to_csv('submission.csv', index=False)
-    
+
     def test_and_create_submission(self, test_texts, test_ids):
         self.create_submission_csv(test_ids, self.test(test_texts))
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     train = pd.read_csv('../../dataset/train.tsv', sep="\t")
     test = pd.read_csv('../../dataset/test.tsv', sep="\t")
     train_texts = train['Phrase'].to_list()
@@ -162,4 +159,3 @@ if __name__ == "__main__":
     model.train(train_texts, train_labels)
     model.load_model()
     model.test_and_create_submission(test_texts, test_ids)
-    

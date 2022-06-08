@@ -16,9 +16,7 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from src.utils.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
-torch.cuda.empty_cache()
-
-device = 'cuda:0'
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class TransformersApproach:

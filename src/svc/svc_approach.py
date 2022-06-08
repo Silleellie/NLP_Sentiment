@@ -3,9 +3,10 @@ from sklearn.svm import SVC
 from sklearn.feature_extraction.text import CountVectorizer
 import spacy
 
+
 class SVCApproach:
 
-    def __init__(self, model = 'en_core_web_sm', **args):
+    def __init__(self, model='en_core_web_sm', **args):
         if model not in spacy.cli.info()['pipelines']:
             spacy.cli.download(model)
 
@@ -25,14 +26,14 @@ class SVCApproach:
             else:
                 token_list.append('<' + w.ent_type_ + '>')
         return token_list
-    
+
     def train(self, train_texts, train_labels):
         train_vectors = self.vectorizer.fit_transform(train_texts)
         self.svc.fit(train_vectors, train_labels)
-    
+
     def predict(self, test_texts):
         return self.svc.predict(self.vectorizer.transform(test_texts))
-    
+
     def test_and_submit(self, test_texts, test_ids):
         predictions = self.predict(test_texts)
         columns = {'PhraseId': test_ids, 'Sentiment': predictions}

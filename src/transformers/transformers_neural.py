@@ -14,9 +14,7 @@ from transformers import get_scheduler
 
 from src.utils.dataset_builder import CustomTrainValEvalHO, CustomTest
 
-torch.cuda.empty_cache()
-
-device = 'cuda:0'
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class CustomHead(nn.Module):
