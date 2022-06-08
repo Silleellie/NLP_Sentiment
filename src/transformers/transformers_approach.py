@@ -16,9 +16,6 @@ from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 from src.utils.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
-# import os
-# os.environ["WANDB_DISABLED"] = "true"
-
 torch.cuda.empty_cache()
 
 device = 'cuda:0'
@@ -77,10 +74,9 @@ class TransformersApproach:
 
         return trainer
 
-    def train(self, dataset_formatted, name_wandb: str, best_trial=None,
+    def train(self, dataset_formatted, name_wandb: str = None, best_trial=None,
               batch_size: int = 16, num_train_epochs: int = 5, output_model_folder='output/test_trainer',
               report_to: str = "none"):
-        run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
         trainer = self._prepare_trainer(dataset_formatted, batch_size, num_train_epochs, output_model_folder,
                                         report_to=report_to)
@@ -89,9 +85,14 @@ class TransformersApproach:
             for n, v in best_trial.hyperparameters.items():
                 setattr(trainer.args, n, v)
 
-        trainer.train()
+        if report_to == 'wandb':
+            run = wandb.init(project="Sentiment_analysis", entity="nlp_leshi", name=name_wandb, reinit=True)
 
-        run.finish()
+            trainer.train()
+
+            run.finish()
+        else:
+            trainer.train()
 
         return trainer
 
@@ -175,7 +176,7 @@ class TransformersApproach:
 
             with torch.no_grad():
                 logits = self.model(**input_model_device)
-            
+
             prediction = torch.argmax(logits.logits, dim=-1).to('cpu')
 
             return [pred.item() for pred in prediction]
@@ -200,24 +201,26 @@ class TransformersApproach:
 if __name__ == '__main__':
     train_path = '../../dataset/train.tsv'
     test_path = '../../dataset/test.tsv'
-
-    model_name = 'checkpoint-15606'
+    model_name = 'albert-base-v2'
+    mode = 'only_phrase'
 
     accuracy_metric = load_metric("accuracy")
 
     t = TransformersApproach(model_name)
 
+    # Uncomment the part of the code that must be run
+
     # -------------- find best hyperparameters ----------------
     # hold out for finding best hyperparameters otherwise very expensive process
-    [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
-                                                                                              mode='only_phrase')
-    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
+    [train_formatted] = CustomTrainValHO(train_path, train_set_size=0.8).preprocess(t.tokenizer,
+                                                                                    mode=mode)
+    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=5)
 
     # --------- build splitted stratify kfold dataset ---------
-    train_formatted_list = CustomTrainValKF(train_path, cut=100, n_splits=2).preprocess(t.tokenizer,
-                                                                                        mode='only_phrase')
+    train_formatted_list = CustomTrainValKF(train_path, n_splits=2).preprocess(t.tokenizer,
+                                                                                        mode=mode)
 
-    # # -------------------- standard train ---------------------
+    # -------------------- standard train ---------------------
     # for i, train_formatted in enumerate(train_formatted_list):
     #     model_name = model_name.replace('/', '_')
     #
@@ -227,8 +230,7 @@ if __name__ == '__main__':
     #
     #     trainer = t.train(train_formatted, f'{model_name}_split_{i}',
     #                       batch_size=2, num_train_epochs=1,
-    #                       output_model_folder=output_folder_split,
-    #                       report_to="wandb")
+    #                       output_model_folder=output_folder_split)
 
     # ----------- train with hyperparameters search ------------
     for i, train_formatted in enumerate(train_formatted_list):
@@ -240,13 +242,10 @@ if __name__ == '__main__':
         shutil.rmtree(output_model_split, ignore_errors=True)
 
         trainer = t.train(train_formatted,
-                          name_wandb=f'{model_name}_split_{i}_best',
                           best_trial=best_trial,
-                          output_model_folder=output_model_split,
-                          report_to="wandb")
+                          output_model_folder=output_model_split)
 
     # ----------------- build submission csv -------------------
-    [test_formatted] = CustomTest(test_path).preprocess(t.tokenizer, mode='only_phrase')
+    [test_formatted] = CustomTest(test_path).preprocess(t.tokenizer, mode=mode)
 
-    df = t.compute_prediction(test_formatted, output_file='submission.csv')['Sentiment']
-
+    t.compute_prediction(test_formatted, output_file='submission.csv')
