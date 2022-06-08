@@ -9,7 +9,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-from src.transformer_neural import CustomHead
+from src.transformers.transformers_neural import CustomHead
 
 model = SentenceTransformer('all-mpnet-base-v2')
 

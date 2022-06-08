@@ -6,11 +6,12 @@ from sentence_transformers import SentenceTransformer
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from src.transformer_neural import CustomHead
+from src.transformers.transformers_neural import CustomHead
 
 from tqdm import tqdm
 
 torch.manual_seed(0)
+
 
 class CustomEmbeddingDataset(Dataset):
     def __init__(self, embeddings, labels):
@@ -22,6 +23,7 @@ class CustomEmbeddingDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.embeddings[idx], self.labels[idx]
+
 
 def custom_neural_network_approach(train_embeddings, train_labels, validation_embeddings, validation_labels, 
                                    test_embeddings, batch_size = 4,
@@ -90,6 +92,7 @@ def custom_neural_network_approach(train_embeddings, train_labels, validation_em
         predictions = torch.argmax(outputs.data, dim=1).cpu()
     
     return predictions
+
 
 if __name__ == "__main__":
 

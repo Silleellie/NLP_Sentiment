@@ -7,7 +7,6 @@ from flair.data import Sentence
 from flair.models import SequenceTagger
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
-# load tagger as class attribute
 tagger = SequenceTagger.load("flair/pos-english-fast")
 
 
@@ -79,9 +78,7 @@ class CustomTrainValKF(CustomDataset):
 
         super().__init__(tsv_path, cut)
 
-
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
-
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId', 'Sentiment'], inplace=True)
         all_original_sentences.rename(columns={'Phrase': 'OriginalSentence'}, inplace=True)
@@ -127,7 +124,6 @@ class CustomTrainValHO(CustomDataset):
 
         super().__init__(tsv_path, cut)
 
-
     def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
         all_original_sentences = df.groupby(by='SentenceId', as_index=False).first()
         all_original_sentences.drop(columns=['PhraseId', 'Sentiment'], inplace=True)
@@ -161,6 +157,26 @@ class CustomTrainValHO(CustomDataset):
         dataset_formatted = dataset_formatted.rename_column('Sentiment', 'label')
 
         return dataset_formatted
+
+
+class CustomTrainValEvalHO(CustomTrainValHO):
+    def _build_dataset(self, df: pd.DataFrame, cut: int) -> List[datasets.DatasetDict]:
+        [dataset_dict] = super()._build_dataset(df, cut)
+
+        train_dict, val_dict = train_test_split(dataset_dict['train'],
+                                                train_size=0.9,
+                                                stratify=dataset_dict['train']['Sentiment'],
+                                                shuffle=True)
+
+        train_dataset = datasets.Dataset.from_dict(train_dict)
+        validation_dataset = datasets.Dataset.from_dict(val_dict)
+
+        # old validation set is the eval set
+        dataset_dict = datasets.DatasetDict({"train": train_dataset,
+                                             "validation": validation_dataset,
+                                             "eval": dataset_dict["validation"]})
+
+        return [dataset_dict]
 
 
 class CustomTest(CustomDataset):

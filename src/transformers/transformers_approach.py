@@ -1,5 +1,4 @@
 import itertools
-
 import shutil
 
 import numpy as np
@@ -14,7 +13,7 @@ from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from transformers import Trainer, TrainingArguments, DataCollatorWithPadding
 
-from src.transformer_approach.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
+from src.utils.dataset_builder import CustomTrainValHO, CustomTest, CustomTrainValKF
 import wandb
 
 # import os
@@ -210,15 +209,15 @@ if __name__ == '__main__':
 
     # -------------- find best hyperparameters ----------------
     # hold out for finding best hyperparameters otherwise very expensive process
-    # [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
-    #                                                                                           mode='only_phrase')
-    # best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
-    #
-    # # --------- build splitted stratify kfold dataset ---------
-    # train_formatted_list = CustomTrainValKF(train_path, cut=100, n_splits=2).preprocess(t.tokenizer,
-    #                                                                                     mode='only_phrase')
+    [train_formatted] = CustomTrainValHO(train_path, cut=1000, train_set_size=0.8).preprocess(t.tokenizer,
+                                                                                              mode='only_phrase')
+    best_trial = t.find_best_hyperparameters(train_formatted, n_trials=2)
 
-    # -------------------- standard train ---------------------
+    # --------- build splitted stratify kfold dataset ---------
+    train_formatted_list = CustomTrainValKF(train_path, cut=100, n_splits=2).preprocess(t.tokenizer,
+                                                                                        mode='only_phrase')
+
+    # # -------------------- standard train ---------------------
     # for i, train_formatted in enumerate(train_formatted_list):
     #     model_name = model_name.replace('/', '_')
     #
@@ -232,19 +231,19 @@ if __name__ == '__main__':
     #                       report_to="wandb")
 
     # ----------- train with hyperparameters search ------------
-    # for i, train_formatted in enumerate(train_formatted_list):
-    #     model_name = model_name.replace('/', '_')
-    #
-    #     output_model_split = f'output/{model_name}/test_split_{i}'
-    #     output_hyper_folder = f'output/{model_name}/test_split_{i}/hyper'
-    #
-    #     shutil.rmtree(output_model_split, ignore_errors=True)
-    #
-    #     trainer = t.train(train_formatted,
-    #                       name_wandb=f'{model_name}_split_{i}_best',
-    #                       best_trial=best_trial,
-    #                       output_model_folder=output_model_split,
-    #                       report_to="wandb")
+    for i, train_formatted in enumerate(train_formatted_list):
+        model_name = model_name.replace('/', '_')
+
+        output_model_split = f'output/{model_name}/test_split_{i}'
+        output_hyper_folder = f'output/{model_name}/test_split_{i}/hyper'
+
+        shutil.rmtree(output_model_split, ignore_errors=True)
+
+        trainer = t.train(train_formatted,
+                          name_wandb=f'{model_name}_split_{i}_best',
+                          best_trial=best_trial,
+                          output_model_folder=output_model_split,
+                          report_to="wandb")
 
     # ----------------- build submission csv -------------------
     [test_formatted] = CustomTest(test_path).preprocess(t.tokenizer, mode='only_phrase')

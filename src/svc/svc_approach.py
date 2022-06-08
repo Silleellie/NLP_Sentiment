@@ -6,8 +6,14 @@ from sklearn.feature_extraction.text import CountVectorizer
 
 import spacy
 
-nlp = spacy.load('en_core_web_sm')
+model = 'en_core_web_sm'
+
+if model not in spacy.cli.info()['pipelines']:
+    spacy.cli.download(model)
+
+nlp = spacy.load(model)
 nlp.add_pipe('merge_entities')
+
 
 def preprocessing(phrase: str):
     phrase_data = list(nlp(phrase))
@@ -19,6 +25,7 @@ def preprocessing(phrase: str):
         else:
             token_list.append('<' + w.ent_type_ + '>')
     return token_list
+
 
 train = pd.read_csv("train.tsv", sep="\t")
 # test = pd.read_csv("test.tsv", sep="\t")

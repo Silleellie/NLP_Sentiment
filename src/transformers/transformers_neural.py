@@ -1,11 +1,8 @@
 import itertools
 
-import datasets
 import pandas as pd
 import torch
-from flair.data import Sentence
 from flair.models import SequenceTagger
-from sklearn.model_selection import train_test_split
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
@@ -16,11 +13,14 @@ from tqdm.auto import tqdm
 from datasets import load_metric
 from transformers import get_scheduler
 
+from src.utils.dataset_builder import CustomTrainValEvalHO
+
 torch.cuda.empty_cache()
 
 device = 'cuda:0'
 
 tagger = SequenceTagger.load("flair/pos-english-fast")
+
 
 class CustomHead(nn.Module):
     def __init__(self, num_labels):
@@ -88,9 +88,11 @@ class CustomModel(nn.Module):
 
         self.custom_head = CustomHead(num_labels).to(device)
 
-        self.optim = AdamW(self.model.parameters(), lr=5e-5, weight_decay=1e-4)
+        self.optim = AdamW(list(self.model.parameters()) + list(self.custom_head.parameters()),
+                           lr=5e-5, weight_decay=1e-4)
 
     def forward(self, input_ids=None, token_type_ids=None, attention_mask=None, labels=None):
+
         # Extract outputs from the body
         outputs = self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
@@ -121,9 +123,8 @@ class CustomModel(nn.Module):
 
         for epoch in range(n_epochs):
             loss = 0
-            loss_acc = 0
-            self.train()
             mean_loss_acc = 0
+            self.train()
             for batch in tqdm(train_dataloader):
                 self.optim.zero_grad()
 
@@ -166,7 +167,6 @@ class CustomModel(nn.Module):
                 logits = outputs.logits
                 predictions = torch.argmax(logits, dim=-1)
                 metric.add_batch(predictions=predictions, references=batch['labels'])
-            
 
             mean_loss_acc = mean_loss_acc / len(train_dataloader)
             eval_accuracy = metric.compute()['accuracy']
@@ -204,89 +204,41 @@ class CustomModel(nn.Module):
         return final_df
 
 
-def tokenize_fn(tokenizer, batch_item_dataset):
-    return tokenizer(batch_item_dataset["Phrase"])
-
-
-def tokenize_fn_pos(tokenizer, batch_item_dataset):
-    return tokenizer(batch_item_dataset["Phrase"], batch_item_dataset["Pos"])
-
-
-def pos_tagger_fn(single_item):
-    # make example sentence
-    sentence = Sentence(single_item["Phrase"])
-
-    # predict NER tags
-    tagger.predict(sentence)
-
-    # print sentence
-    tags = ' '.join(token.tag for token in sentence.tokens)
-
-    return {'Pos': tags}
-
-
 if __name__ == '__main__':
-    train = pd.read_csv('../dataset/train.tsv', sep="\t")
-    texts = train['Phrase'].to_list()[:100]
-    labels = train['Sentiment'].to_list()[:100]
 
-    train_texts, eval_texts, train_labels, eval_labels = train_test_split(texts, labels,
-                                                                          train_size=0.8,
-                                                                          stratify=labels,
-                                                                          shuffle=True)
+    train_path = '../dataset/train.tsv'
 
-    train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels,
-                                                                        train_size=0.9,
-                                                                        stratify=train_labels,
-                                                                        shuffle=True)
+    cm = CustomModel('bert-base-uncased', num_labels=5)
 
-    train_dict = {'Phrase': train_texts, 'Sentiment': train_labels}
-    validation_dict = {'Phrase': val_texts, 'Sentiment': val_labels}
-    eval_dict = {'Phrase': eval_texts, 'Sentiment': eval_labels}
+    [dataset_dict] = CustomTrainValEvalHO(train_path, cut=10000).preprocess(cm.tokenizer, mode='with_pos')
 
-    train_dataset = datasets.Dataset.from_dict(train_dict)
-    validation_dataset = datasets.Dataset.from_dict(validation_dict)
-    eval_dataset = datasets.Dataset.from_dict(eval_dict)
-
-    dataset_dict = datasets.DatasetDict({"train": train_dataset,
-                                         "validation": validation_dataset,
-                                         "eval": eval_dataset})
-
-    cm = CustomModel('bert-base-uncased', 5)
-
-    pos_dataset = dataset_dict.map(pos_tagger_fn)
-
-    tokenized_dataset = pos_dataset.map(lambda batch: tokenize_fn_pos(cm.tokenizer, batch), batched=True)
-
-    formatted_dataset = tokenized_dataset.rename_column('Sentiment', 'label').remove_columns(['Phrase', 'Pos'])
-
-    # from list to tensors
-    formatted_dataset.set_format("torch")
-
-    data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
+    # uncomment to balance the dataset
 
     # class_sample_count = np.array(
-    #     [len(np.where(formatted_dataset['train']['label'] == t)[0]) for t in np.unique(formatted_dataset['train']['label'])])
+    #     [len(np.where(dataset_dict['train']['label'] == t)[0])
+    #      for t in np.unique(dataset_dict['train']['label'])])
     # weight = 1. / class_sample_count
-    # samples_weight = np.array([weight[t] for t in formatted_dataset['train']['label']])
+    # samples_weight = np.array([weight[t] for t in dataset_dict['train']['label']])
     #
     # samples_weight = torch.from_numpy(samples_weight)
     # samples_weight = samples_weight.double()
     # sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
 
+    data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
+
     train_dataloader = DataLoader(
-        formatted_dataset["train"], batch_size=1, collate_fn=data_collator, shuffle=True
+        dataset_dict["train"], batch_size=4, collate_fn=data_collator, shuffle=True
     )
 
     validation_dataloader = DataLoader(
-        formatted_dataset["validation"], batch_size=1, collate_fn=data_collator, shuffle=True
+        dataset_dict["validation"], batch_size=4, collate_fn=data_collator, shuffle=True
     )
 
     eval_dataloader = DataLoader(
-        formatted_dataset["eval"], batch_size=1, collate_fn=data_collator
+        dataset_dict["eval"], batch_size=4, collate_fn=data_collator
     )
 
-    cm.trainer(1, train_dataloader, validation_dataloader, eval_dataloader)
+    cm.trainer(3, train_dataloader, validation_dataloader, eval_dataloader)
 
     # test = pd.read_csv('../dataset/test.tsv', sep="\t")[:100]
     #
