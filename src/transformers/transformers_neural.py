@@ -2,7 +2,6 @@ import itertools
 
 import pandas as pd
 import torch
-from flair.models import SequenceTagger
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
@@ -18,8 +17,6 @@ from src.utils.dataset_builder import CustomTrainValEvalHO
 torch.cuda.empty_cache()
 
 device = 'cuda:0'
-
-tagger = SequenceTagger.load("flair/pos-english-fast")
 
 
 class CustomHead(nn.Module):
@@ -109,7 +106,7 @@ class CustomModel(nn.Module):
         return SequenceClassifierOutput(loss=loss, logits=logits, hidden_states=outputs.hidden_states,
                                         attentions=outputs.attentions)
 
-    def trainer(self, n_epochs, train_dataloader, validation_dataloader, eval_dataloader):
+    def trainer(self, n_epochs, train_dataloader, validation_dataloader, eval_dataloader, save_all=False):
 
         metric = load_metric("accuracy")
 
@@ -119,7 +116,8 @@ class CustomModel(nn.Module):
             name="linear", optimizer=self.optim, num_warmup_steps=0, num_training_steps=num_training_steps
         )
 
-        best_eval_accuracy = 0
+        if not save_all:
+            best_eval_accuracy = 0
 
         for epoch in range(n_epochs):
             loss = 0
@@ -171,8 +169,12 @@ class CustomModel(nn.Module):
             mean_loss_acc = mean_loss_acc / len(train_dataloader)
             eval_accuracy = metric.compute()['accuracy']
 
-            if eval_accuracy > best_eval_accuracy:
-                torch.save(self, 'best_model.pth')
+            if not save_all:
+                if eval_accuracy > best_eval_accuracy:
+                    best_eval_accuracy = eval_accuracy
+                    torch.save(self, 'best_model.pth')
+            else:
+                torch.save(self, 'model_epoch_' + str(epoch) + ".pth")
             print({'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
@@ -188,9 +190,9 @@ class CustomModel(nn.Module):
 
         phrase_ids = list(dataset_formatted['test']['PhraseId'])
 
-        dataset_formatted['test'] = dataset_formatted['test'].remove_columns('PhraseId')
+        dataset_formatted_test_no_phrase_id = dataset_formatted['test'].remove_columns('PhraseId')
 
-        dataloader = DataLoader(dataset_formatted['test'],
+        dataloader = DataLoader(dataset_formatted_test_no_phrase_id,
                                 collate_fn=DataCollatorWithPadding(tokenizer=self.tokenizer),
                                 num_workers=2, batch_size=8)
 
