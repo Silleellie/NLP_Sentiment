@@ -11,12 +11,12 @@ Simply run `pip install -r requirements.txt`
 # General Information
 
 The source code is organized into 3 different packages (*+1 for utils*), one for each approach described in the
-presentation
+[presentation](UNIBA_NLP2122_Leshi.pdf)
 * Each file contains a `main` method which guides you in performing the various experiments
 
 # Computing best submission file
 
-The CSV submitted that returned the best score is in the root of the repository
+The CSV submitted that returned the best score is in the root of the repository ([here](bert-base-uncased_with_pos_split_2.csv))
 
 If you want to regenerate it, run the [`obtain_best_solution.py`](obtain_best_solution.py) module
 * Note that the code in this module will download the already fine-tuned model.
