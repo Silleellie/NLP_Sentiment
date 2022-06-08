@@ -10,7 +10,7 @@ from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
 """
-Obtained accuracy results:
+Obtained accuracy results validation:
 
 Custom Neural Network approach with default parameters: 0.6667948225041651
 """
@@ -59,74 +59,95 @@ class CustomEmbeddingDataset(Dataset):
         return self.embeddings[idx], self.labels[idx]
 
 
-def custom_neural_network_approach(train_embeddings, train_labels, validation_embeddings, validation_labels, 
-                                   test_embeddings, batch_size = 4,
-                                   epochs = 5, lr=5e-5, weight_d=1e-4, loss = nn.CrossEntropyLoss()):
-    net = CustomNetwork(5).to(device)
+class SbertNetwork:
 
-    criterion = loss
-    optimizer = optim.AdamW(net.parameters(), lr=lr, weight_decay=weight_d)
+    def __init__(self, model_name = 'all-mpnet-base-v2', device = "cuda:0"):
+        self.net = CustomNetwork(5).to(device)
+        self.model = SentenceTransformer(model_name, device=device)
 
-    train_ds = CustomEmbeddingDataset(train_embeddings, train_labels)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    validation_ds = CustomEmbeddingDataset(validation_embeddings, validation_labels)
-    validation_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True)
-
-    print('Starting Training')
-
-    best_accuracy_score = 0
-
-    for epoch in range(epochs):
-        print("-------------------------------------------------")
-        print("EPOCH: ", str(epoch+1))
-        running_loss = 0.0
-        print("TRAIN")
-        for (inputs, labels) in tqdm(train_loader):
-
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            optimizer.zero_grad()
-
-            outputs = net(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
+    def train(self, train_texts, train_labels, batch_size = 4,
+              epochs = 5, lr=5e-5, weight_d=1e-4, loss = nn.CrossEntropyLoss()):
         
-        print("train loss: ", str(running_loss / len(train_loader)))
+        train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
+                                                                                          train_size=.8,
+                                                                                          stratify=train_labels,
+                                                                                          random_state=42)
+        
+        train_embeddings = self.model.encode(train_texts, convert_to_tensor=True, device=device)
+        validation_embeddings = self.model.encode(validation_texts, convert_to_tensor=True, device=device)
+                                                                                    
+        criterion = loss
+        optimizer = optim.AdamW(self.net.parameters(), lr=lr, weight_decay=weight_d)
 
-        print("VALIDATION")
-        accuracy = 0
-        with torch.no_grad():
-            for (inputs, labels) in tqdm(validation_loader):
+        train_ds = CustomEmbeddingDataset(train_embeddings, train_labels)
+        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+        validation_ds = CustomEmbeddingDataset(validation_embeddings, validation_labels)
+        validation_loader = DataLoader(validation_ds, batch_size=batch_size, shuffle=True)
+
+        print('Starting Training')
+
+        best_accuracy_score = 0
+
+        for epoch in range(epochs):
+            print("-------------------------------------------------")
+            print("EPOCH: ", str(epoch+1))
+            running_loss = 0.0
+            print("TRAIN")
+            for (inputs, labels) in tqdm(train_loader):
 
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
-                outputs = net(inputs)
-                predicted = torch.argmax(outputs.data, dim=1).cpu()
-                accuracy += accuracy_score(predicted, labels.cpu())
+                optimizer.zero_grad()
 
-        accuracy = accuracy / len(validation_loader)
-        print("accuracy score for current epoch: ", str(accuracy))
-        print("previous best accuracy score: ", str(best_accuracy_score))
-        if accuracy > best_accuracy_score:
-            best_accuracy_score = accuracy
-            torch.save(net.state_dict(), 'best_network_state.pth')
+                outputs = self.net(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
 
-    print('Finished Training')
-    print('FINAL BEST ACCURACY SCORE: ', str(best_accuracy_score))
+                running_loss += loss.item()
+            
+            print("train loss: ", str(running_loss / len(train_loader)))
 
-    net = CustomNetwork(5).to(device)
-    net.load_state_dict(torch.load('best_network_state.pth'))
-    with torch.no_grad():
-        outputs = net(test_embeddings)
-        predictions = torch.argmax(outputs.data, dim=1).cpu()
+            print("VALIDATION")
+            accuracy = 0
+            with torch.no_grad():
+                for (inputs, labels) in tqdm(validation_loader):
+
+                    inputs = inputs.to(device)
+
+                    outputs = self.net(inputs)
+                    predicted = torch.argmax(outputs.data, dim=1).cpu()
+                    accuracy += accuracy_score(predicted, labels)
+
+            accuracy = accuracy / len(validation_loader)
+            print("accuracy score for current epoch: ", str(accuracy))
+            print("previous best accuracy score: ", str(best_accuracy_score))
+            if accuracy > best_accuracy_score:
+                best_accuracy_score = accuracy
+                torch.save(self.net.state_dict(), 'best_network_state.pth')
+
+        print('Finished Training')
+        print('FINAL BEST ACCURACY SCORE: ', str(best_accuracy_score))
+
+    def test(self, test_texts):
+        test_embeddings = self.model.encode(test_texts, convert_to_tensor=True, device=device)
+        with torch.no_grad():
+            outputs = self.net(test_embeddings)
+            predictions = torch.argmax(outputs.data, dim=1).cpu()
+        
+        return predictions
+
+    def load_model(self, path='best_network_state.pth'):
+        self.net.load_state_dict(torch.load(path))
     
-    return predictions
-
+    def create_submission_csv(self, test_ids, predictions):
+        final_dict = {'PhraseId': test_ids, 'Sentiment': predictions}
+        final_df = pd.DataFrame(final_dict)
+        final_df.to_csv('submission.csv', index=False)
+    
+    def test_and_create_submission(self, test_texts, test_ids):
+        self.create_submission_csv(test_ids, self.test(test_texts))
 
 if __name__ == "__main__":
 
@@ -137,20 +158,8 @@ if __name__ == "__main__":
     test_texts = test['Phrase'].to_list()
     test_ids = test['PhraseId'].to_list()
 
-    train_texts, validation_texts, train_labels, validation_labels = train_test_split(train_texts, train_labels,
-                                                                                      train_size=.8,
-                                                                                      stratify=train_labels,
-                                                                                      random_state=42)
+    model = SbertNetwork()
+    model.train(train_texts, train_labels)
+    model.load_model()
+    model.test_and_create_submission(test_texts, test_ids)
     
-    model = SentenceTransformer('all-mpnet-base-v2', device=device)
-    train_embeddings = model.encode(train_texts, convert_to_tensor=True, device=device)
-    validation_embeddings = model.encode(validation_texts, convert_to_tensor=True, device=device)
-    test_embeddings = model.encode(test_texts, convert_to_tensor=True, device=device)
-
-    predictions = custom_neural_network_approach(train_embeddings, train_labels,
-                                                 validation_embeddings, validation_labels,
-                                                 test_embeddings)
-    
-    final_dict = {'PhraseId': test_ids, 'Sentiment': predictions}
-    final_df = pd.DataFrame(final_dict)
-    final_df.to_csv('submission.csv', index=False)
