@@ -208,7 +208,7 @@ class CustomModel(nn.Module):
 
 if __name__ == '__main__':
 
-    train_path = '../dataset/train.tsv'
+    train_path = '../../dataset/train.tsv'
 
     cm = CustomModel('bert-base-uncased', num_labels=5)
 
