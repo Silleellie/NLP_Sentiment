@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from datasets import load_metric
 from transformers import get_scheduler
 
-from src.utils.dataset_builder import CustomTrainValEvalHO
+from src.utils.dataset_builder import CustomTrainValEvalHO, CustomTest
 
 torch.cuda.empty_cache()
 
@@ -93,6 +93,7 @@ class CustomModel(nn.Module):
         # Extract outputs from the body
         outputs = self.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
+        # compute sentence embedding
         sentenced = torch.stack([torch.mean(tensor, dim=1) for tensor in outputs.hidden_states])
         sentenced = torch.permute(sentenced, (1, 0, 2)).unsqueeze(dim=2)
 
@@ -116,8 +117,7 @@ class CustomModel(nn.Module):
             name="linear", optimizer=self.optim, num_warmup_steps=0, num_training_steps=num_training_steps
         )
 
-        if not save_all:
-            best_eval_accuracy = 0
+        best_eval_accuracy = 0
 
         for epoch in range(n_epochs):
             loss = 0
@@ -175,6 +175,7 @@ class CustomModel(nn.Module):
                     torch.save(self, 'best_model.pth')
             else:
                 torch.save(self, 'model_epoch_' + str(epoch) + ".pth")
+
             print({'eval_accuracy': eval_accuracy, 'loss_acc': mean_loss_acc, 'loss': loss.item()})
 
     def compute_prediction(self, dataset_formatted, output_file='submission.csv'):
@@ -209,23 +210,14 @@ class CustomModel(nn.Module):
 if __name__ == '__main__':
 
     train_path = '../../dataset/train.tsv'
+    test_path = '../../dataset/test.tsv'
 
     cm = CustomModel('bert-base-uncased', num_labels=5)
 
-    [dataset_dict] = CustomTrainValEvalHO(train_path, cut=10000).preprocess(cm.tokenizer, mode='with_pos')
+    # ------------------- hold out splitting --------------------
+    [dataset_dict] = CustomTrainValEvalHO(train_path, cut=100).preprocess(cm.tokenizer, mode='with_pos')
 
-    # uncomment to balance the dataset
-
-    # class_sample_count = np.array(
-    #     [len(np.where(dataset_dict['train']['label'] == t)[0])
-    #      for t in np.unique(dataset_dict['train']['label'])])
-    # weight = 1. / class_sample_count
-    # samples_weight = np.array([weight[t] for t in dataset_dict['train']['label']])
-    #
-    # samples_weight = torch.from_numpy(samples_weight)
-    # samples_weight = samples_weight.double()
-    # sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
-
+    # ------- train with custom head for classification ---------
     data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
 
     train_dataloader = DataLoader(
@@ -240,20 +232,13 @@ if __name__ == '__main__':
         dataset_dict["eval"], batch_size=4, collate_fn=data_collator
     )
 
-    cm.trainer(3, train_dataloader, validation_dataloader, eval_dataloader)
+    cm.trainer(n_epochs=1,
+               train_dataloader=train_dataloader,
+               validation_dataloader=validation_dataloader,
+               eval_dataloader=eval_dataloader)
 
-    # test = pd.read_csv('../dataset/test.tsv', sep="\t")[:100]
-    #
-    # test_dict = {'PhraseId': list(test['PhraseId']), 'Phrase': list(test['Phrase'])}
-    #
-    # test_dataset = datasets.Dataset.from_dict(test_dict)
-    #
-    # dataset_dict = datasets.DatasetDict({"test": test_dataset})
-    #
-    # dataset_tokenized = dataset_dict.map(lambda batch: tokenize_fn(cm.tokenizer, batch), batched=True)
-    #
-    # dataset_formatted = dataset_tokenized.remove_columns('Phrase')
-    #
-    # cm.compute_prediction(dataset_formatted)
+    # ----------------- build submission csv -------------------
+    [formatted_dataset] = CustomTest(test_path, cut=100).preprocess(cm.tokenizer, "with_pos")
 
-    print("we")
+    cm.compute_prediction(formatted_dataset, output_file='submission.csv')
+
