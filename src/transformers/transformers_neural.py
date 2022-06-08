@@ -215,30 +215,30 @@ if __name__ == '__main__':
     cm = CustomModel('bert-base-uncased', num_labels=5)
 
     # ------------------- hold out splitting --------------------
-    [dataset_dict] = CustomTrainValEvalHO(train_path, cut=100).preprocess(cm.tokenizer, mode='with_pos')
+    [dataset_dict] = CustomTrainValEvalHO(train_path).preprocess(cm.tokenizer, mode='with_pos')
 
     # ------- train with custom head for classification ---------
     data_collator = DataCollatorWithPadding(tokenizer=cm.tokenizer)
 
     train_dataloader = DataLoader(
-        dataset_dict["train"], batch_size=4, collate_fn=data_collator, shuffle=True
+        dataset_dict["train"], batch_size=8, collate_fn=data_collator, shuffle=True
     )
 
     validation_dataloader = DataLoader(
-        dataset_dict["validation"], batch_size=4, collate_fn=data_collator, shuffle=True
+        dataset_dict["validation"], batch_size=8, collate_fn=data_collator, shuffle=True
     )
 
     eval_dataloader = DataLoader(
-        dataset_dict["eval"], batch_size=4, collate_fn=data_collator
+        dataset_dict["eval"], batch_size=8, collate_fn=data_collator
     )
 
-    cm.trainer(n_epochs=1,
+    cm.trainer(n_epochs=3,
                train_dataloader=train_dataloader,
                validation_dataloader=validation_dataloader,
                eval_dataloader=eval_dataloader)
 
     # ----------------- build submission csv -------------------
-    [formatted_dataset] = CustomTest(test_path, cut=100).preprocess(cm.tokenizer, "with_pos")
+    [formatted_dataset] = CustomTest(test_path).preprocess(cm.tokenizer, "with_pos")
 
     cm.compute_prediction(formatted_dataset, output_file='submission.csv')
 
