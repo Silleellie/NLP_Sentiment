@@ -1,6 +1,8 @@
-# NLP_Sentiment
+# NLP_Sentiment - UNIBA_NLP2122_Leshi
 
-NLP project regarding Sentiment Analysis for the exam
+NLP project for the exam - Leshi group
+
+Kaggle challenge: [Sentiment Analysis on Movie Reviews](https://www.kaggle.com/competitions/sentiment-analysis-on-movie-reviews/overview)
 
 # Installation
 
